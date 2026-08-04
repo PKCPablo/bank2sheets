@@ -10,3 +10,8 @@ Use `/issue` for list/claim/assign/release/close/prclose/show operations.
 Required labels: `status:to-do`, `status:doing`, `status:in-review`, `status:blocked`,
 `type:task`, `type:feature`, `type:bug`, `type:docs`, `type:chore`,
 `priority:high`, `priority:medium`, `priority:low`.
+
+## Deferred / Pending
+
+- GitHub Actions cron workflow for scheduled sync — deferred from MVP plan
+  `plans/2026-08-04-mvp-pipeline-local.md`; pending implementation.

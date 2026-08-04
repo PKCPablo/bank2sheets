@@ -35,3 +35,4 @@ Key research facts (2026-08-04):
 - During implementation the owner must create a Google service account, enable the Sheets API, and share the target spreadsheet with the service account email.
 - Salt Edge free tier limit: 100 live connections; exceeding it requires the Growth plan (~$500/month) — monitor, unlikely for personal use.
 - GoCardless/Nordigen is documented as not viable for new users, superseding any earlier recommendation.
+- Security boundary (confirmed with owner): consent is AIS-only (read-only: account details, balances, transactions). PIS / transfers are never requested.
