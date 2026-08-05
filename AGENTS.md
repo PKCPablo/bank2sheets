@@ -20,14 +20,14 @@ bank2sheets is a personal application that uses Open Banking to fetch transactio
 
 ### Build/Test Commands
 
-Maven commands must run with the JDK 21 home set per command; the default `JAVA_HOME` points to JDK 8, which fails `mvn compile` with `release=21`:
+Use the Maven wrapper, which switches to JDK 21 automatically:
 
 ```powershell
-$env:JAVA_HOME='C:\Program Files\Java\jdk-21.0.6'; mvn test
-$env:JAVA_HOME='C:\Program Files\Java\jdk-21.0.6'; mvn package
+.\scripts\mvn.ps1 test
+.\scripts\mvn.ps1 package
 ```
 
-`mvn package` produces the runnable fat JAR at `target\bank2sheets-0.1.0-SNAPSHOT.jar`. Run it with `java -jar target\bank2sheets-0.1.0-SNAPSHOT.jar <command>` (commands: `connect`, `fetch`, `sync`, `help`). Runtime config comes from environment variables (`SALTEDGE_APP_ID`, `SALTEDGE_SECRET`, `SALTEDGE_CUSTOMER_ID`, `SALTEDGE_CONNECTION_ID`, `BANK2SHEETS_ACCOUNTS`, and for `sync` `GOOGLE_SERVICE_ACCOUNT_B64`, `GOOGLE_SPREADSHEET_ID`); `connect` persists only the connection id to `bank2sheets-state.properties` (gitignored). See `README.md` for details.
+The wrapper is needed because the default `JAVA_HOME` points to JDK 8, which fails `mvn compile` with `release=21`; when no JDK 21+ is active it uses `C:\Program Files\Java\jdk-21.0.6` (see `README.md` for the direct `mvn` fallback). Run the fat JAR with the local runner `.\scripts\run.ps1 <command>` (commands: `connect`, `fetch`, `sync`, `help`); it loads `.env` from the repository root and never prints its values. `mvn package` produces the runnable fat JAR at `target\bank2sheets-0.1.0-SNAPSHOT.jar`. Runtime config comes from environment variables (`SALTEDGE_APP_ID`, `SALTEDGE_SECRET`, `SALTEDGE_CUSTOMER_ID`, `SALTEDGE_CONNECTION_ID`, `BANK2SHEETS_ACCOUNTS`, and for `sync` `GOOGLE_SERVICE_ACCOUNT_B64`, `GOOGLE_SPREADSHEET_ID`); `connect` persists only the connection id to `bank2sheets-state.properties` (gitignored). `mvn test` also generates the JaCoCo coverage report at `target/site/jacoco/index.html` and enforces an 80% line-coverage gate. See `README.md` for details.
 
 ### Key Conventions & Constraints
 

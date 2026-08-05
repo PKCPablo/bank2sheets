@@ -9,25 +9,34 @@ bank2sheets is a personal Java 21 command-line job that uses Open Banking to fet
 
 ## Build
 
-The default `JAVA_HOME` on this machine points to JDK 8, which cannot compile with `maven.compiler.release=21`. Run every Maven command with the JDK 21 home set per command (this does not change your global environment):
+Use the Maven wrapper, which switches the JDK to 21 automatically (the default `JAVA_HOME` on this machine points to JDK 8, which cannot compile with `maven.compiler.release=21`):
+
+```powershell
+.\scripts\mvn.ps1 test
+.\scripts\mvn.ps1 package
+```
+
+If you prefer to run Maven directly, set the JDK 21 home per command as a fallback (this does not change your global environment):
 
 ```powershell
 $env:JAVA_HOME='C:\Program Files\Java\jdk-21.0.6'; mvn test
 $env:JAVA_HOME='C:\Program Files\Java\jdk-21.0.6'; mvn package
 ```
 
-`mvn package` produces a runnable fat JAR at `target\bank2sheets-0.1.0-SNAPSHOT.jar`.
+`mvn package` produces a runnable fat JAR at `target\bank2sheets-0.1.0-SNAPSHOT.jar`. `mvn test` also generates the JaCoCo coverage report at `target/site/jacoco/index.html` and fails if line coverage drops below 80%.
 
 ## Run
 
-Run from the repository root so the runtime state file lands next to `.gitignore`:
+Run from the repository root so the runtime state file lands next to `.gitignore`. Use the local runner, which loads `.env` (KEY=VALUE, never printed) when present and then runs the fat JAR with the `java` on your PATH:
 
 ```powershell
-java -jar target\bank2sheets-0.1.0-SNAPSHOT.jar help
-java -jar target\bank2sheets-0.1.0-SNAPSHOT.jar connect
-java -jar target\bank2sheets-0.1.0-SNAPSHOT.jar fetch
-java -jar target\bank2sheets-0.1.0-SNAPSHOT.jar sync
+.\scripts\run.ps1 help
+.\scripts\run.ps1 connect
+.\scripts\run.ps1 fetch
+.\scripts\run.ps1 sync
 ```
+
+If the JAR is missing, the runner prints the build instruction (`.\scripts\mvn.ps1 package`) and exits non-zero.
 
 Subcommands:
 
@@ -60,9 +69,9 @@ $env:SALTEDGE_CUSTOMER_ID='...'
 $env:BANK2SHEETS_ACCOUNTS='saltedge:ACCT_ID'
 $env:GOOGLE_SERVICE_ACCOUNT_B64='...'
 $env:GOOGLE_SPREADSHEET_ID='...'
-java -jar target\bank2sheets-0.1.0-SNAPSHOT.jar connect
-java -jar target\bank2sheets-0.1.0-SNAPSHOT.jar fetch
-java -jar target\bank2sheets-0.1.0-SNAPSHOT.jar sync
+.\scripts\run.ps1 connect
+.\scripts\run.ps1 fetch
+.\scripts\run.ps1 sync
 ```
 
 The runtime state file `bank2sheets-state.properties` holds only the Salt Edge connection id (no credentials, no bank tokens) and is listed in `.gitignore`.
