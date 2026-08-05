@@ -6,3 +6,6 @@ target/
 
 # Runtime state written by `connect` (connection id only; never credentials)
 bank2sheets-state.properties
+
+# Local environment/secrets file (never commit credentials)
+.env
