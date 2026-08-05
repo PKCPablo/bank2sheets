@@ -36,3 +36,10 @@ Key research facts (2026-08-04):
 - Salt Edge free tier limit: 100 live connections; exceeding it requires the Growth plan (~$500/month) — monitor, unlikely for personal use.
 - GoCardless/Nordigen is documented as not viable for new users, superseding any earlier recommendation.
 - Security boundary (confirmed with owner): consent is AIS-only (read-only: account details, balances, transactions). PIS / transfers are never requested.
+
+## Implementation note (2026-08-04, MVP pipeline delivered)
+
+- JSON library refined from Jackson to **Gson 2.11.0** (smallest stable lib, zero transitive deps) — implementation choice, ponytail: avoid dependency weight for a two-API personal app.
+- Google Sheets access refined: no official `google-api-services-sheets` / `google-api-client` dependency — stdlib `HttpClient` + stdlib RS256 service-account JWT (RFC 7523) + Gson. Same auth model (service account shared with the spreadsheet), far smaller dependency tree.
+- Env var name: `GOOGLE_SERVICE_ACCOUNT_B64` (base64 service-account JSON) — supersedes the earlier `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` draft.
+- Execution in v1 is on-demand locally; GitHub Actions cron stays deferred (backlog).

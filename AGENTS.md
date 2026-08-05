@@ -20,11 +20,19 @@ bank2sheets is a personal application that uses Open Banking to fetch transactio
 
 ### Build/Test Commands
 
-Not yet defined — no application scaffold exists. They will be added here once the Java project is scaffolded; see `docs/ai/plans/` for the first implementation plan.
+Maven commands must run with the JDK 21 home set per command; the default `JAVA_HOME` points to JDK 8, which fails `mvn compile` with `release=21`:
+
+```powershell
+$env:JAVA_HOME='C:\Program Files\Java\jdk-21.0.6'; mvn test
+$env:JAVA_HOME='C:\Program Files\Java\jdk-21.0.6'; mvn package
+```
+
+`mvn package` produces the runnable fat JAR at `target\bank2sheets-0.1.0-SNAPSHOT.jar`. Run it with `java -jar target\bank2sheets-0.1.0-SNAPSHOT.jar <command>` (commands: `connect`, `fetch`, `sync`, `help`). Runtime config comes from environment variables (`SALTEDGE_APP_ID`, `SALTEDGE_SECRET`, `SALTEDGE_CUSTOMER_ID`, `SALTEDGE_CONNECTION_ID`, `BANK2SHEETS_ACCOUNTS`, and for `sync` `GOOGLE_SERVICE_ACCOUNT_B64`, `GOOGLE_SPREADSHEET_ID`); `connect` persists only the connection id to `bank2sheets-state.properties` (gitignored). See `README.md` for details.
 
 ### Key Conventions & Constraints
 
 - Never store or commit bank credentials or long-lived tokens; all sensitive values must live in GitHub Actions secrets at runtime.
+- `bank2sheets-state.properties` (runtime state: connection id only) is gitignored; never commit it.
 - Keep the architecture minimal: no frontend and no database unless a concrete requirement forces one; avoid speculative abstraction (ponytail reuse-first discipline).
 - Use staged delivery for implementation; `/quick` only for small, low-risk changes.
 - Keep `docs/ai/` memory routed and current; `planner` is the memory owner.

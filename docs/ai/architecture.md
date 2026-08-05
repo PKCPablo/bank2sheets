@@ -9,10 +9,10 @@
 - Language: Java 21 LTS (Temurin). Java 25 LTS is an acceptable future upgrade.
 - Build: Maven single module + `maven-shade-plugin` → executable fat JAR (`java -jar bank2sheets.jar`).
 - No application framework (no Spring Boot). Plain Java.
-- HTTP: JDK `java.net.http.HttpClient`; JSON: Jackson.
-- Google Sheets: official `google-api-services-sheets` v4 + `google-api-client`; auth with a Google service account (the spreadsheet is shared with its email). No interactive OAuth.
+- HTTP: JDK `java.net.http.HttpClient`; JSON: Gson (smallest stable lib, no transitive deps; ponytail decision over Jackson).
+- Google Sheets: no official client library — stdlib `java.net.http.HttpClient` + stdlib RS256 service-account JWT (RFC 7523) + Gson. Auth with a Google service account (the spreadsheet is shared with its email). No interactive OAuth.
 - Testing: JUnit 5 (minimum).
-- Execution: GitHub Actions (`ubuntu-latest`, `actions/setup-java` Temurin 21, cron). All secrets in Actions secrets.
+- Execution: on-demand locally in v1 (`connect` / `fetch` / `sync` CLI). GitHub Actions cron is deferred to the backlog (see `docs/ai/backlog/README.md`). All secrets in Actions secrets when CI lands.
 - Open Banking providers: Salt Edge for BBVA (v1, free production tier). Powens (ex Budget Insight) is the only aggregator verified for Trade Republic and is deferred until needed. GoCardless/Nordigen is not viable for new users (stopped onboarding, enterprise-only).
 
 ## Configuration / Environment (contract)
@@ -21,8 +21,10 @@ Sensitive and per-run values come exclusively from the environment; never commit
 
 - `SALTEDGE_APP_ID` — Salt Edge application id (secret)
 - `SALTEDGE_SECRET` — Salt Edge application secret (secret)
-- `SALTEDGE_CONNECTION_ID` — active BBVA connection id, produced by the one-time `connect` mode (per account)
-- `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` — Google service-account key JSON, base64-encoded (secret)
+- `SALTEDGE_CUSTOMER_ID` — Salt Edge customer that owns the connection (required for `connect`)
+- `SALTEDGE_CONNECTION_ID` — active BBVA connection id; optional once `connect` has run (persisted to the gitignored `bank2sheets-state.properties`)
+- `BANK2SHEETS_ACCOUNTS` — comma-separated `provider:accountId` entries to fetch, e.g. `saltedge:ACCT_ID`
+- `GOOGLE_SERVICE_ACCOUNT_B64` — Google service-account key JSON, base64-encoded (secret)
 - `GOOGLE_SPREADSHEET_ID` — target spreadsheet id
 
 Local build note: Maven 3.9.9 defaults to JDK 8 (`JAVA_HOME` = `C:\Program Files\Java\jdk-1.8`); use `JAVA_HOME=C:\Program Files\Java\jdk-21.0.6` (installed) for Java 21 builds.
