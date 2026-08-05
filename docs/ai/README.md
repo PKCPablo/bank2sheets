@@ -6,7 +6,7 @@ Do **not** load all `docs/ai/**` by default.
 
 ## Repository Status
 
-Greenfield repo (`bank2sheets`): no application code yet — OpenCode workflow tooling is bootstrapped. Confirmed direction: Open Banking → Google Sheets transaction sync, scheduled via GitHub Actions, Java 21 (ADR-0002), no frontend/database, credentials never stored. Providers: Salt Edge (BBVA) now; Powens (ex Budget Insight) for Trade Republic later. Active plan (planned, no code yet): `plans/2026-08-04-mvp-pipeline-local.md`. See `architecture.md` for boundaries and `logs/2026-08.md` for context.
+Operational repo: v1 MVP pipeline implemented and completed (`plans/2026-08-04-mvp-pipeline-local.md`, phase 3/3). Confirmed direction: Open Banking → Google Sheets transaction sync, scheduled via GitHub Actions, Java 21 (ADR-0002), no frontend/database, credentials never stored. Providers: Salt Edge (BBVA) now; Powens (ex Budget Insight) for Trade Republic later behind `TransactionSource`. Architecture deliberately informal — no formal hexagonal (ADR-0003). See `architecture.md` for boundaries and `logs/2026-08.md` for context.
 
 ## Topic Routes
 
