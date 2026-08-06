@@ -1,5 +1,9 @@
 ---
 description: Critically reviews implemented changes for regression risk, recommends tests when justified, and writes tests only with explicit approval.
+permission:
+  edit: ask
+  bash: ask
+  task: deny
 mode: subagent
 ---
 

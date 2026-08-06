@@ -1,5 +1,11 @@
 ---
 description: Analyzes problem reports and improvement ideas before shared GitHub Issue task creation.
+permission:
+  edit: deny
+  bash:
+    "*": ask
+    "git status*": allow
+  task: deny
 mode: subagent
 ---
 

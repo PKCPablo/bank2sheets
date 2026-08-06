@@ -1,5 +1,11 @@
 ---
 description: Reviews architectural boundary changes against existing ADRs, flags conflicts, and proposes new ADRs without authoring code or phases.
+permission:
+  edit: deny
+  bash:
+    "*": ask
+    "git status*": allow
+  task: deny
 mode: subagent
 ---
 

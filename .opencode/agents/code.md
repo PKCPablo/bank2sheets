@@ -1,5 +1,9 @@
 ---
 description: Implements one approved phase across atomic stages and pauses for manual validation after each stage.
+permission:
+  edit: ask
+  bash: ask
+  task: deny
 mode: subagent
 temperature: 0.1
 ---

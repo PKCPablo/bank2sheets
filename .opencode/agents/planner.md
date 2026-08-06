@@ -1,5 +1,27 @@
 ---
 description: Plans phased work, coordinates research/implementation/testing subagents, reviews changes with git, and maintains project memory.
+permission:
+  edit: ask
+  bash:
+    "*": ask
+    "git status*": allow
+    "git diff*": allow
+    "git log*": allow
+    "git rev-parse*": allow
+    "git remote get-url*": allow
+    "git branch*": allow
+    "git show*": allow
+    "git ls-files*": allow
+    "npx tsx .opencode/skills/shared-task/scripts/gh-issue.ts": allow
+    "npx tsx .opencode/skills/shared-task/scripts/gh-app-auth.ts*": allow
+  task:
+    "*": deny
+    research: allow
+    code: allow
+    quickcode: allow
+    test: allow
+    taskanalyst: allow
+    architect: allow
 mode: primary
 ---
 

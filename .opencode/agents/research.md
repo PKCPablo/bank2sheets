@@ -1,5 +1,9 @@
 ---
 description: Onboards existing repositories and creates initial docs/ai memory before implementation planning.
+permission:
+  edit: ask
+  bash: ask
+  task: deny
 mode: subagent
 ---
 
