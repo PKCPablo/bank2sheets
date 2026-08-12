@@ -28,7 +28,7 @@ class SaltEdgeClientTest {
     @Test
     void connectSendsAisOnlyConsentAndReturnsUrl() {
         FakeHttp http = new FakeHttp();
-        http.stub("/connect_sessions/create",
+        http.stub("/connections/connect",
                 """
                 {"data": {"connect_url": "https://www.saltedge.com/connect?token=t1",
                           "expires_at": "2026-08-05T00:00:00Z"}}
@@ -41,7 +41,7 @@ class SaltEdgeClientTest {
         assertEquals(1, http.requests.size());
         FakeHttp.Request request = http.requests.get(0);
         assertEquals("POST", request.method());
-        assertEquals(FakeHttp.BASE + "/connect_sessions/create", request.url());
+        assertEquals(FakeHttp.BASE + "/connections/connect", request.url());
         assertEquals("app-1", request.headers().get("App-id"));
         assertEquals("secret-1", request.headers().get("Secret"));
         JsonObject data = JsonParser.parseString(request.body()).getAsJsonObject().getAsJsonObject("data");
@@ -50,7 +50,7 @@ class SaltEdgeClientTest {
         for (JsonElement scope : data.getAsJsonObject("consent").getAsJsonArray("scopes")) {
             scopes.add(scope.getAsString());
         }
-        assertEquals(List.of("account_details", "transactions_details"), scopes);
+        assertEquals(List.of("accounts", "transactions"), scopes);
         assertEquals("http://localhost:5173/bank2sheets/connected",
                 data.getAsJsonObject("attempt").get("return_to").getAsString());
     }

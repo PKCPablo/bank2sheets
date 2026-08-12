@@ -19,7 +19,7 @@ import java.util.Map;
  */
 public class FakeHttp implements HttpExchange {
 
-    public static final String BASE = "https://www.saltedge.com/api/v5";
+    public static final String BASE = "https://www.saltedge.com/api/v6";
 
     public final Map<String, Response> responses = new HashMap<>();
     public final List<Request> requests = new ArrayList<>();

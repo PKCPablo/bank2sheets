@@ -19,13 +19,15 @@
 
 Sensitive and per-run values come exclusively from the environment; never commit them.
 
-- `SALTEDGE_APP_ID` — Salt Edge application id (secret)
-- `SALTEDGE_SECRET` — Salt Edge application secret (secret)
+- `SALTEDGE_APP_ID` — Salt Edge **Service** API key id (`App-id` header) (secret)
+- `SALTEDGE_SECRET` — Salt Edge **Service** API key secret (`Secret` header) (secret)
 - `SALTEDGE_CUSTOMER_ID` — Salt Edge customer that owns the connection (required for `connect`)
 - `SALTEDGE_CONNECTION_ID` — active BBVA connection id; optional once `connect` has run (persisted to the gitignored `bank2sheets-state.properties`)
 - `BANK2SHEETS_ACCOUNTS` — comma-separated `provider:accountId` entries to fetch, e.g. `saltedge:ACCT_ID`
 - `GOOGLE_SERVICE_ACCOUNT_B64` — Google service-account key JSON, base64-encoded (secret)
 - `GOOGLE_SPREADSHEET_ID` — target spreadsheet id
+
+Salt Edge contract: **API V6** (`https://www.saltedge.com/api/v6`). Keys must be **Service API keys** from the Salt Edge dashboard (API Keys page, type Service); App API keys don't work in V6. The `App-id`/`Secret` headers and env var names are unchanged. AIS-only read consent with scopes `accounts` (covers accounts + balance) and `transactions`; PIS is never requested.
 
 Local build note: Maven 3.9.9 defaults to JDK 8 (`JAVA_HOME` = `C:\Program Files\Java\jdk-1.8`); use `JAVA_HOME=C:\Program Files\Java\jdk-21.0.6` (installed) for Java 21 builds.
 
@@ -35,7 +37,7 @@ Local build note: Maven 3.9.9 defaults to JDK 8 (`JAVA_HOME` = `C:\Program Files
 - Scheduled, headless execution via GitHub Actions is the primary run mode.
 - Read source: Open Banking (PSD2) account transaction APIs. Write target: Google Sheets.
 - Bank access is isolated behind a `TransactionSource` interface; the provider is selected per account via configuration. v1 implements only Salt Edge; adding Trade Republic later means adding a Powens implementation without touching the rest of the pipeline.
-- Bank access is read-only by design: only PSD2 AIS consent types are requested (account details, balances, transactions); PIS (payment initiation / transfers) is never requested.
+- Bank access is read-only by design: only PSD2 AIS consent scopes are requested (`accounts` — covers accounts and balances — and `transactions`); PIS (payment initiation / transfers) is never requested.
 - Keep a small pipeline shape (fetch → transform → sync) with room to add categorization/statistics/export stages later.
 - Isolation strategy is deliberately informal ports-and-adapters seams, not a formal hexagonal architecture (ADR-0003): bank access behind `TransactionSource` (adding Powens = new implementation, no pipeline changes), HTTP behind `HttpExchange` (tests inject fakes), Google Sheets behind `GoogleSheetsClient` (factory-created), and `Main` as the composition root. Revisit only on concrete pain — second provider → provider-selection factory keyed by config; pipeline growth → extract a use case out of `Main`.
 - No web frontend and no database unless a concrete requirement forces one.

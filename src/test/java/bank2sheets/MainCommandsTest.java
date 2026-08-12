@@ -39,7 +39,7 @@ class MainCommandsTest {
     @Test
     void connectEndToEndPrintsUrlAndPersistsConnectionId() throws IOException {
         FakeHttp http = new FakeHttp();
-        http.stub("/connect_sessions/create",
+        http.stub("/connections/connect",
                 """
                 {"data": {"connect_url": "https://www.saltedge.com/connect?token=t1"}}
                 """);
@@ -62,7 +62,7 @@ class MainCommandsTest {
     @Test
     void connectWithPendingConnectionDoesNotPersistState() throws IOException {
         FakeHttp http = new FakeHttp();
-        http.stub("/connect_sessions/create",
+        http.stub("/connections/connect",
                 """
                 {"data": {"connect_url": "https://www.saltedge.com/connect?token=t1"}}
                 """);

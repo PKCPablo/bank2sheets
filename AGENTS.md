@@ -16,7 +16,7 @@ The sections below contain repository-specific guidance. `/onboard-repo` and `re
 
 ### Project Overview
 
-bank2sheets is a personal application that uses Open Banking to fetch transactions from one or more bank accounts and sync them to a Google Sheets spreadsheet. It runs periodically via GitHub Actions, never stores bank credentials, and is designed to stay simple and extensible (future: automatic categorization, statistics, exports). Planned stack: Java, no frontend, no database. See `README.md` and `docs/ai/architecture.md`.
+bank2sheets is a personal application that uses Open Banking to fetch transactions from one or more bank accounts and sync them to a Google Sheets spreadsheet. It runs periodically via GitHub Actions, never stores bank credentials, and is designed to stay simple and extensible (future: automatic categorization, statistics, exports). Salt Edge is consumed through its **V6 API** with **Service API keys** (App keys don't work in V6); the consent scopes requested are `accounts` and `transactions`. Planned stack: Java, no frontend, no database. See `README.md` and `docs/ai/architecture.md`.
 
 ### Build/Test Commands
 

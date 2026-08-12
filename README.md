@@ -52,13 +52,15 @@ Real credentials are provided at runtime via environment variables and are never
 
 | Variable | Purpose |
 | --- | --- |
-| `SALTEDGE_APP_ID` | Salt Edge API key id (`App-id` header) |
-| `SALTEDGE_SECRET` | Salt Edge API key secret (`Secret` header) |
-| `SALTEDGE_CUSTOMER_ID` | Salt Edge customer that owns the connection (create one in the Salt Edge dashboard, or via `POST /api/v5/customers`) |
+| `SALTEDGE_APP_ID` | Salt Edge **Service** API key id (`App-id` header) |
+| `SALTEDGE_SECRET` | Salt Edge **Service** API key secret (`Secret` header) |
+| `SALTEDGE_CUSTOMER_ID` | Salt Edge customer that owns the connection (create one in the Salt Edge dashboard, or via `POST /api/v6/customers`) |
 | `SALTEDGE_CONNECTION_ID` | Optional; `connect` persists it to `bank2sheets-state.properties` and `fetch` reads it from there |
 | `BANK2SHEETS_ACCOUNTS` | Comma-separated `provider:accountId` entries to fetch, e.g. `saltedge:ACCT_ID` |
 | `GOOGLE_SERVICE_ACCOUNT_B64` | Base64-encoded Google service account JSON (`client_email` + `private_key`) with edit access to the target spreadsheet; required for `sync` |
 | `GOOGLE_SPREADSHEET_ID` | Id of the target spreadsheet (shared with the service account email); required for `sync` |
+
+Salt Edge uses the **V6 API** (`https://www.saltedge.com/api/v6`). The credentials must be **Service API keys** created in the Salt Edge dashboard (API Keys page, type Service); App API keys don't work in V6. The `App-id`/`Secret` headers and the environment variable names are unchanged.
 
 Example (PowerShell):
 

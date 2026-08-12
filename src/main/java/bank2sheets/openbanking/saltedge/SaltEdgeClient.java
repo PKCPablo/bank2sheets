@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Salt Edge Account Information API v5 client (AIS-only, read consent).
+ * Salt Edge Account Information API v6 client (AIS-only, read consent).
  *
  * <p>App-level authentication uses the {@code App-id}/{@code Secret} headers from
  * {@link AppConfig}. The client never creates payment/transfer (PIS) intents.
@@ -27,9 +27,9 @@ import java.util.Map;
  */
 public final class SaltEdgeClient implements TransactionSource {
 
-    private static final String BASE_URL = "https://www.saltedge.com/api/v5";
-    private static final String AIS_SCOPE_ACCOUNT_DETAILS = "account_details";
-    private static final String AIS_SCOPE_TRANSACTIONS_DETAILS = "transactions_details";
+    private static final String BASE_URL = "https://www.saltedge.com/api/v6";
+    private static final String AIS_SCOPE_ACCOUNTS = "accounts";
+    private static final String AIS_SCOPE_TRANSACTIONS = "transactions";
     private static final String RETURN_TO = "http://localhost:5173/bank2sheets/connected";
 
     private final AppConfig config;
@@ -49,8 +49,8 @@ public final class SaltEdgeClient implements TransactionSource {
     public String connect() {
         JsonObject consent = new JsonObject();
         JsonArray scopes = new JsonArray();
-        scopes.add(AIS_SCOPE_ACCOUNT_DETAILS);
-        scopes.add(AIS_SCOPE_TRANSACTIONS_DETAILS);
+        scopes.add(AIS_SCOPE_ACCOUNTS);
+        scopes.add(AIS_SCOPE_TRANSACTIONS);
         consent.add("scopes", scopes);
         JsonObject attempt = new JsonObject();
         attempt.addProperty("return_to", RETURN_TO);
@@ -61,7 +61,7 @@ public final class SaltEdgeClient implements TransactionSource {
         JsonObject body = new JsonObject();
         body.add("data", data);
 
-        Response response = request("POST", "/connect_sessions/create", body.toString());
+        Response response = request("POST", "/connections/connect", body.toString());
         JsonObject result = JsonParser.parseString(response.body()).getAsJsonObject();
         return result.getAsJsonObject("data").get("connect_url").getAsString();
     }
