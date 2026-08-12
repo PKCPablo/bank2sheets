@@ -6,7 +6,7 @@ Do **not** load all `docs/ai/**` by default.
 
 ## Repository Status
 
-Operational repo: v1 MVP pipeline implemented and completed (`plans/2026-08-04-mvp-pipeline-local.md`, phase 3/3). Confirmed direction: Open Banking → Google Sheets transaction sync, scheduled via GitHub Actions, Java 21 (ADR-0002), no frontend/database, credentials never stored. Providers: Salt Edge (BBVA) now; Powens (ex Budget Insight) for Trade Republic later behind `TransactionSource`. Architecture deliberately informal — no formal hexagonal (ADR-0003). Dev ergonomics: `.\scripts\mvn.ps1` (JDK 21 wrapper), `.\scripts\run.ps1` (`.env` runner), `.editorconfig` LF, and JaCoCo 80% line-coverage gate on `mvn test` (ADR-0004). See `architecture.md` for boundaries and `logs/2026-08.md` for context.
+Operational repo: v1 MVP pipeline implemented and completed (`plans/2026-08-04-mvp-pipeline-local.md`, phase 3/3). Confirmed direction: Open Banking → Google Sheets transaction sync, scheduled via GitHub Actions, Java 21 (ADR-0002), no frontend/database, credentials never stored. Providers: Salt Edge (BBVA) now; Powens (ex Budget Insight) for Trade Republic later behind `TransactionSource`. Salt Edge uses the **V6 API** with **Service API keys** (App keys don't work in V6); migration `plans/2026-08-05-saltedge-v6-migration.md` is phase 1/2 done, phase 2 (real connect/sync validation) owner-gated. Architecture deliberately informal — no formal hexagonal (ADR-0003). Dev ergonomics: `.\scripts\mvn.ps1` (JDK 21 wrapper), `.\scripts\run.ps1` (`.env` runner), `.editorconfig` LF, and JaCoCo 80% line-coverage gate on `mvn test` (ADR-0004). See `architecture.md` for boundaries and `logs/2026-08.md` for context.
 
 ## Topic Routes
 

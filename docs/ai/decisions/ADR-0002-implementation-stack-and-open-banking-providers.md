@@ -43,3 +43,9 @@ Key research facts (2026-08-04):
 - Google Sheets access refined: no official `google-api-services-sheets` / `google-api-client` dependency — stdlib `HttpClient` + stdlib RS256 service-account JWT (RFC 7523) + Gson. Same auth model (service account shared with the spreadsheet), far smaller dependency tree.
 - Env var name: `GOOGLE_SERVICE_ACCOUNT_B64` (base64 service-account JSON) — supersedes the earlier `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` draft.
 - Execution in v1 is on-demand locally; GitHub Actions cron stays deferred (backlog).
+
+## Implementation note (2026-08-05, Salt Edge V6 migration)
+
+- Salt Edge API migrated from the obsolete V5 to **V6** (`https://www.saltedge.com/api/v6`). Connect uses `POST /connections/connect` (V5's `/connect_sessions/create` no longer exists); the request/response shape is unchanged (`data.customer_id` + `data.consent.scopes` + `data.attempt.return_to` → `data.connect_url`), so the `TransactionSource` contract is untouched.
+- Credentials are **Service API keys** (dashboard API Keys page, type Service); App API keys don't work in V6. The `App-id`/`Secret` headers and env var names are unchanged — only the key type/values change.
+- Consent scopes are the V6 values `accounts` (covers accounts + balance) and `transactions`; AIS-only read consent is unchanged (PIS never requested).
