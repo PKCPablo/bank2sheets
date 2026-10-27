@@ -8,7 +8,7 @@ bank2sheets is a personal Java 21 CLI that fetches BBVA transactions through the
 
 - `src/main/java/bank2sheets/` — `Main` CLI plus `config/` (env config, runtime state), `http/` (HTTP seam), `model/` (`Account`, `Transaction`), `openbanking/` (`TransactionSource` + `saltedge/SaltEdgeClient`), `sheets/` (`GoogleSheetsClient`, `SheetRow`).
 - `src/test/java/` — mirrors the main packages; fake HTTP backends plus unit and CLI tests.
-- `scripts/` — `mvn.ps1` (JDK 21 Maven wrapper) and `run.ps1` (loads the repo-root `.env`, resolves a JDK 21+ like `mvn.ps1`, runs the fat JAR).
+- `scripts/` — `mvn.ps1` (JDK 21 Maven wrapper) and `run.ps1` (loads the repo-root `.env`, resolves a JDK 21+ like `mvn.ps1`, runs the fat JAR); both share `jdk.ps1` (JDK 21+ discovery).
 - `docs/ai/` — routed AI memory: `README.md` router, `architecture.md`, `decisions/`, `plans/`, `backlog/`, `logs/`.
 - `pom.xml`, `.editorconfig` — build and editor conventions.
 

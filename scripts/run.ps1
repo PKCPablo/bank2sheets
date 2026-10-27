@@ -17,69 +17,9 @@ if (-not (Test-Path -LiteralPath $JarPath)) {
 }
 
 # Resolve a JDK 21+ (the machine default JAVA_HOME is JDK 8 and java is not on PATH).
-# ponytail: JDK discovery duplicated from scripts/mvn.ps1 (issue #2 scoped run.ps1 only);
-# extract scripts/jdk.ps1 if a third caller appears or mvn.ps1 is touched again.
-$jdkRoot = 'C:\Program Files\Java'
+. (Join-Path $PSScriptRoot 'jdk.ps1')
 
-function Get-JavaExeMajorVersion {
-    param([string]$JavaExe)
-
-    if ([string]::IsNullOrWhiteSpace($JavaExe) -or -not (Test-Path -LiteralPath $JavaExe)) {
-        return $null
-    }
-
-    $versionLine = & $JavaExe -version 2>&1 | Select-Object -First 1
-    if ($versionLine -match 'version "(\d+)') {
-        return [int]$matches[1]
-    }
-
-    return $null
-}
-
-function Get-JdkNameVersion {
-    param([string]$Name)
-
-    $raw = $Name -replace '^jdk-', ''
-    if ($raw -notmatch '\.') {
-        $raw = "$raw.0"
-    }
-    if ($raw -match '^\d+(\.\d+)+$') {
-        return [version]$raw
-    }
-
-    return [version]'0.0'
-}
-
-function Resolve-Java21Exe {
-    if (-not [string]::IsNullOrWhiteSpace($env:JAVA_HOME)) {
-        $javaHomeExe = Join-Path $env:JAVA_HOME 'bin\java.exe'
-        if ((Get-JavaExeMajorVersion $javaHomeExe) -ge 21) {
-            return $javaHomeExe
-        }
-    }
-
-    $candidates = @(
-        Get-ChildItem -LiteralPath $jdkRoot -Directory -Filter 'jdk-21*' -ErrorAction SilentlyContinue |
-            Sort-Object -Property @{ Expression = { Get-JdkNameVersion $_.Name }; Descending = $true }, Name -Descending
-    )
-
-    foreach ($candidate in $candidates) {
-        $candidateExe = Join-Path $candidate.FullName 'bin\java.exe'
-        if ((Get-JavaExeMajorVersion $candidateExe) -ge 21) {
-            return $candidateExe
-        }
-    }
-
-    $pathJava = (Get-Command java -CommandType Application -ErrorAction SilentlyContinue |
-        Select-Object -First 1).Source
-    if ((Get-JavaExeMajorVersion $pathJava) -ge 21) {
-        return $pathJava
-    }
-
-    return $null
-}
-
-$javaExe = Resolve-Java21Exe
+$javaExe = Find-Java21Exe
 if (-not $javaExe) {
     Write-Error "No JDK 21+ found. Install JDK 21+ or set JAVA_HOME (or PATH) to a JDK 21+ installation."
     exit 1
