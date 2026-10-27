@@ -22,3 +22,7 @@ Adopt `scripts/mvn.ps1` and `scripts/run.ps1` as the canonical development entry
 - `mvn test` now fails the build if line coverage drops below 80%. Baseline at adoption: 86.0% LINE COVEREDRATIO (332/386 lines), so there is ~6% headroom before new code threatens the gate.
 - `.editorconfig` establishes LF as the repo convention going forward (some existing files such as `AGENTS.md` are still committed CRLF; normalizing them is a separate, explicit change).
 - Future coverage regressions surface in the dev loop rather than CI.
+
+## Implementation note (2026-10-27)
+
+- `scripts/mvn.ps1` now keeps an active JDK 21+ `JAVA_HOME` and otherwise discovers the highest `jdk-21*` installation under `C:\Program Files\Java`, failing with a clear actionable message when none exists. The previous hardcoded JDK path was removed, and an empty or unset `JAVA_HOME` is handled without path errors.

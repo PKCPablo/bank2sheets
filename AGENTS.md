@@ -1,46 +1,60 @@
 # AGENTS.md
 
-## Mission
+## Project overview
 
-Use the installed OpenCode workflows to onboard repositories and deliver minimal, reviewed, and documented changes. Staged delivery is the default conservative path; quick delivery handles clear, small, low-risk tasks via `/quick` or proactive planner suggestion.
+bank2sheets is a personal Java 21 CLI that fetches BBVA transactions through the Salt Edge V6 Open Banking API and idempotently appends them to a Google Sheets spreadsheet. It runs on demand (`connect` / `fetch` / `sync`), keeps credentials out of the repository, and has no frontend or database. Start with `README.md` for usage and `docs/ai/README.md` for routed durable memory; most agent work touches `src/main/java/bank2sheets/` (Salt Edge client, Sheets client, config, CLI wiring) and its mirrored tests.
 
-## AI Memory Index
+## Project structure
 
-This file is the practical entrypoint for AI agents working in this repository. For durable memory (architecture, decisions, approved plans, and logs), see `docs/ai/README.md`.
+- `src/main/java/bank2sheets/` — `Main` CLI plus `config/` (env config, runtime state), `http/` (HTTP seam), `model/` (`Account`, `Transaction`), `openbanking/` (`TransactionSource` + `saltedge/SaltEdgeClient`), `sheets/` (`GoogleSheetsClient`, `SheetRow`).
+- `src/test/java/` — mirrors the main packages; fake HTTP backends plus unit and CLI tests.
+- `scripts/` — `mvn.ps1` (JDK 21 Maven wrapper) and `run.ps1` (loads the repo-root `.env`, runs the fat JAR).
+- `docs/ai/` — routed AI memory: `README.md` router, `architecture.md`, `decisions/`, `plans/`, `backlog/`, `logs/`.
+- `pom.xml`, `.editorconfig` — build and editor conventions.
 
-Treat `docs/ai/README.md` as a tiny router. Do not load all memory files by default; use `/memory` (planner) or `memory-maintenance` for low-token lookup/freshness/update routing.
+## Setup & build
 
-## Repository Guidance
+- Prerequisites: Java 21 (JDK) and Maven 3.9.9.
+- `scripts/mvn.ps1` auto-detects a JDK 21+: it keeps an active JDK 21+ `JAVA_HOME` and otherwise selects the highest `jdk-21*` under `C:\Program Files\Java` (here Temurin 21.0.12 at `C:\Program Files\Java\jdk-21`). Build with:
 
-The sections below contain repository-specific guidance. `/onboard-repo` and `research` fill these values during onboarding.
+  ```powershell
+  .\scripts\mvn.ps1 test
+  .\scripts\mvn.ps1 package
+  ```
 
-### Project Overview
+  The fat JAR is at `target\bank2sheets-0.1.0-SNAPSHOT.jar`.
+- Run the built JAR via `.\scripts\run.ps1 help|connect|fetch|sync`; it loads `.env` from the repo root without printing values. Runtime config is env-only (see `README.md`).
 
-bank2sheets is a personal application that uses Open Banking to fetch transactions from one or more bank accounts and sync them to a Google Sheets spreadsheet. It runs periodically via GitHub Actions, never stores bank credentials, and is designed to stay simple and extensible (future: automatic categorization, statistics, exports). Salt Edge is consumed through its **V6 API** with **Service API keys** (App keys don't work in V6); the consent scopes requested are `accounts` and `transactions`. Planned stack: Java, no frontend, no database. See `README.md` and `docs/ai/architecture.md`.
+## Testing
 
-### Build/Test Commands
+- Full suite: `.\scripts\mvn.ps1 test` — 44 JUnit 5 tests, JaCoCo report at `target/site/jacoco/index.html`, and an 80% line-coverage gate that fails the build below 80%.
+- Single test: `.\scripts\mvn.ps1 test '-Dtest=SaltEdgeClientTest'` or `'-Dtest=SaltEdgeClientTest#methodName'` (Maven Surefire).
+- No lint or typecheck command is configured; `.editorconfig` is the only style enforcement.
 
-Use the Maven wrapper, which switches to JDK 21 automatically:
+## Code style
 
-```powershell
-.\scripts\mvn.ps1 test
-.\scripts\mvn.ps1 package
-```
+- Follow `.editorconfig`: UTF-8, LF, final newline, no trailing whitespace; 4-space indent for Java/PowerShell, 2 for XML.
+- No formatter or linter plugin (no Spotless/Checkstyle). Match neighboring code and keep Javadoc on non-obvious contracts.
+- Runtime dependency: Gson 2.11.0 only; tests use JUnit 5. Prefer JDK stdlib HTTP/JWT helpers over new libraries.
 
-The wrapper is needed because the default `JAVA_HOME` points to JDK 8, which fails `mvn compile` with `release=21`; when no JDK 21+ is active it uses `C:\Program Files\Java\jdk-21.0.6` (see `README.md` for the direct `mvn` fallback). Run the fat JAR with the local runner `.\scripts\run.ps1 <command>` (commands: `connect`, `fetch`, `sync`, `help`); it loads `.env` from the repository root and never prints its values. `mvn package` produces the runnable fat JAR at `target\bank2sheets-0.1.0-SNAPSHOT.jar`. Runtime config comes from environment variables (`SALTEDGE_APP_ID`, `SALTEDGE_SECRET`, `SALTEDGE_CUSTOMER_ID`, `SALTEDGE_CONNECTION_ID`, `BANK2SHEETS_ACCOUNTS`, and for `sync` `GOOGLE_SERVICE_ACCOUNT_B64`, `GOOGLE_SPREADSHEET_ID`); `connect` persists only the connection id to `bank2sheets-state.properties` (gitignored). `mvn test` also generates the JaCoCo coverage report at `target/site/jacoco/index.html` and enforces an 80% line-coverage gate. See `README.md` for details.
+## Git workflow
 
-### Key Conventions & Constraints
+- Branch: `master`; remote `https://github.com/PKCPablo/bank2sheets.git`.
+- Commit messages may use conventional prefixes (`feat:`, `fix:`, `docs:`, `chore:`, `build:`) or plain text; there is no required commit-message format.
+- One-developer repository: commit directly to `master`; no PR, review, branch-protection, or merge-method convention is required; no CI currently.
+- Do not commit unless explicitly asked.
 
-- Never store or commit bank credentials or long-lived tokens; all sensitive values must live in GitHub Actions secrets at runtime.
-- `bank2sheets-state.properties` (runtime state: connection id only) is gitignored; never commit it.
-- Keep the architecture minimal: no frontend and no database unless a concrete requirement forces one; avoid speculative abstraction (ponytail reuse-first discipline).
-- Use staged delivery for implementation; `/quick` only for small, low-risk changes.
-- Keep `docs/ai/` memory routed and current; `planner` is the memory owner.
+## Boundaries
 
-## Workflow & Engineering Rules
+- Never commit `.env`, credentials, service-account keys, or `bank2sheets-state.properties` (it holds the Salt Edge connection id).
+- Do not add runtime dependencies beyond Gson without asking; no frontend, database, or formal architecture layer.
+- Do not assume scheduled CI/cron exists; execution is on-demand local and cron is deferred in `docs/ai/backlog/README.md`.
+- Keep changes within the requested scope; record durable decisions in `docs/ai/` via the planner.
 
-The `planner` (planning) and `delivery` (implementation pipeline) agents are the two primary entry gates. Planner owns discovery, phased plan creation, memory, and shared tasks. Delivery owns phase handoff, code/quickcode invocation, git-based review, and close workflow. See the installed planner and delivery agents for the canonical rulesets.
+## Repository boundary
 
-When pasting an error or log (stack trace, crash dump, exception), prefix with `/triage` so the triage skill loads before any investigation.
+Stay inside the repository root (`git rev-parse --show-toplevel` when in a git repo, otherwise the working directory). Don't read or write outside it unless the user approves.
 
-Planner enforces a ponytail reuse-first discipline. Use `/ponytail-help` in an installed repo to see available commands and the 7-rung ladder. To disable: `/ponytail off`.
+## Working with wayforge
+
+This repository uses the wayforge workflow. Formalize and plan work with `/intent` then `/plan` (the `planner` agent). Track shared tasks with `/issue`. Implement approved plans with the `delivery` agent (`/load-plan`, `/implement-task`, `/review-task`). Load context progressively: start from this file and `README.md`, then route through `docs/ai/README.md` and load only what the task needs.

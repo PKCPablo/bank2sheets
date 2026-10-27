@@ -4,12 +4,12 @@ bank2sheets is a personal Java 21 command-line job that uses Open Banking to fet
 
 ## Requirements
 
-- Java 21 (JDK 21.0.6 is installed at `C:\Program Files\Java\jdk-21.0.6`)
+- Java 21 (JDK 21 is installed at `C:\Program Files\Java\jdk-21`)
 - Maven 3.9.9
 
 ## Build
 
-Use the Maven wrapper, which switches the JDK to 21 automatically (the default `JAVA_HOME` on this machine points to JDK 8, which cannot compile with `maven.compiler.release=21`):
+Use the Maven wrapper, which auto-detects a JDK 21+: it keeps an active JDK 21+ `JAVA_HOME` and otherwise selects the highest `jdk-21*` under `C:\Program Files\Java` (the default `JAVA_HOME` on this machine points to JDK 8, which cannot compile with `maven.compiler.release=21`):
 
 ```powershell
 .\scripts\mvn.ps1 test
@@ -19,8 +19,8 @@ Use the Maven wrapper, which switches the JDK to 21 automatically (the default `
 If you prefer to run Maven directly, set the JDK 21 home per command as a fallback (this does not change your global environment):
 
 ```powershell
-$env:JAVA_HOME='C:\Program Files\Java\jdk-21.0.6'; mvn test
-$env:JAVA_HOME='C:\Program Files\Java\jdk-21.0.6'; mvn package
+$env:JAVA_HOME='C:\Program Files\Java\jdk-21'; mvn test
+$env:JAVA_HOME='C:\Program Files\Java\jdk-21'; mvn package
 ```
 
 `mvn package` produces a runnable fat JAR at `target\bank2sheets-0.1.0-SNAPSHOT.jar`. `mvn test` also generates the JaCoCo coverage report at `target/site/jacoco/index.html` and fails if line coverage drops below 80%.
