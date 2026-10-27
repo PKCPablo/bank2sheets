@@ -17,6 +17,8 @@ if (-not (Test-Path -LiteralPath $JarPath)) {
 }
 
 # Resolve a JDK 21+ (the machine default JAVA_HOME is JDK 8 and java is not on PATH).
+# ponytail: JDK discovery duplicated from scripts/mvn.ps1 (issue #2 scoped run.ps1 only);
+# extract scripts/jdk.ps1 if a third caller appears or mvn.ps1 is touched again.
 $jdkRoot = 'C:\Program Files\Java'
 
 function Get-JavaExeMajorVersion {
@@ -58,7 +60,6 @@ function Resolve-Java21Exe {
 
     $candidates = @(
         Get-ChildItem -LiteralPath $jdkRoot -Directory -Filter 'jdk-21*' -ErrorAction SilentlyContinue |
-            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'bin\java.exe') } |
             Sort-Object -Property @{ Expression = { Get-JdkNameVersion $_.Name }; Descending = $true }, Name -Descending
     )
 
