@@ -8,7 +8,7 @@ bank2sheets is a personal Java 21 CLI that fetches BBVA transactions through the
 
 - `src/main/java/bank2sheets/` — `Main` CLI plus `config/` (env config, runtime state), `http/` (HTTP seam), `model/` (`Account`, `Transaction`), `openbanking/` (`TransactionSource` + `saltedge/SaltEdgeClient`), `sheets/` (`GoogleSheetsClient`, `SheetRow`).
 - `src/test/java/` — mirrors the main packages; fake HTTP backends plus unit and CLI tests.
-- `scripts/` — `mvn.ps1` (JDK 21 Maven wrapper) and `run.ps1` (loads the repo-root `.env`, runs the fat JAR).
+- `scripts/` — `mvn.ps1` (JDK 21 Maven wrapper) and `run.ps1` (loads the repo-root `.env`, resolves a JDK 21+ like `mvn.ps1`, runs the fat JAR).
 - `docs/ai/` — routed AI memory: `README.md` router, `architecture.md`, `decisions/`, `plans/`, `backlog/`, `logs/`.
 - `pom.xml`, `.editorconfig` — build and editor conventions.
 
@@ -23,7 +23,7 @@ bank2sheets is a personal Java 21 CLI that fetches BBVA transactions through the
   ```
 
   The fat JAR is at `target\bank2sheets-0.1.0-SNAPSHOT.jar`.
-- Run the built JAR via `.\scripts\run.ps1 help|connect|fetch|sync`; it loads `.env` from the repo root without printing values. Runtime config is env-only (see `README.md`).
+- Run the built JAR via `.\scripts\run.ps1 help|connect|fetch|sync`; it loads `.env` from the repo root without printing values and resolves a JDK 21+ like `mvn.ps1`. Runtime config is env-only (see `README.md`).
 
 ## Testing
 

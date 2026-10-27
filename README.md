@@ -27,7 +27,7 @@ $env:JAVA_HOME='C:\Program Files\Java\jdk-21'; mvn package
 
 ## Run
 
-Run from the repository root so the runtime state file lands next to `.gitignore`. Use the local runner, which loads `.env` (KEY=VALUE, never printed) when present and then runs the fat JAR with the `java` on your PATH:
+Run from the repository root so the runtime state file lands next to `.gitignore`. Use the local runner, which loads `.env` (KEY=VALUE, never printed) when present, resolves a JDK 21+ (it keeps an active JDK 21+ `JAVA_HOME`, otherwise selects the highest `jdk-21*` under `C:\Program Files\Java`), and runs the fat JAR with it:
 
 ```powershell
 .\scripts\run.ps1 help
