@@ -1,11 +1,9 @@
 package bank2sheets.http;
 
-/** Transport-level failure of the shared {@link HttpExchange} seam (network or interruption). */
-public class HttpExchangeException extends RuntimeException {
+import bank2sheets.Bank2SheetsException;
 
-    public HttpExchangeException(String message) {
-        super(message);
-    }
+/** Transport-level failure of the shared {@link HttpExchange} seam (network or interruption). */
+public class HttpExchangeException extends Bank2SheetsException {
 
     public HttpExchangeException(String message, Throwable cause) {
         super(message, cause);

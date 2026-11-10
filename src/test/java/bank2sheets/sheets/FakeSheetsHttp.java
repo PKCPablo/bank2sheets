@@ -15,6 +15,9 @@ import java.util.Map;
  * (no type conversion). Stub keys for the Sheets API are relative to
  * {@code /v4/spreadsheets}; the OAuth token endpoint is keyed by its full URL
  * because it lives on a different host.
+ *
+ * <p>ponytail: this is a thin wrapper around {@code new FakeHttp(GOOGLE_BASE)};
+ * tests could use {@link FakeHttp} directly instead of this class.
  */
 public final class FakeSheetsHttp implements HttpExchange {
 

@@ -14,8 +14,10 @@ import com.google.gson.JsonParser;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.StreamSupport;
 
 /**
  * Salt Edge Account Information API v6 client (AIS-only, read consent).
@@ -70,21 +72,15 @@ public final class SaltEdgeClient implements TransactionSource {
     public String findConnectionId() {
         Response response = request("GET", "/connections?customer_id=" + customerId(), null);
         JsonObject result = JsonParser.parseString(response.body()).getAsJsonObject();
-        String newestId = null;
-        String newestCreatedAt = null;
-        for (JsonElement element : result.getAsJsonArray("data")) {
-            JsonObject connection = element.getAsJsonObject();
-            String createdAt = connection.get("created_at").getAsString();
-            if (newestCreatedAt == null || createdAt.compareTo(newestCreatedAt) > 0) {
-                newestId = connection.get("id").getAsString();
-                newestCreatedAt = createdAt;
-            }
-        }
-        if (newestId == null) {
+        JsonObject newest = StreamSupport.stream(result.getAsJsonArray("data").spliterator(), false)
+                .map(JsonElement::getAsJsonObject)
+                .max(Comparator.comparing(c -> c.get("created_at").getAsString()))
+                .orElse(null);
+        if (newest == null) {
             throw new SaltEdgeException("No Salt Edge connection found for customer "
                     + config.saltEdgeCustomerId() + "; complete the authorization URL first");
         }
-        return newestId;
+        return newest.get("id").getAsString();
     }
 
     @Override

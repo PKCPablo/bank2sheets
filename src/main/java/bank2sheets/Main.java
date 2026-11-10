@@ -4,15 +4,12 @@ import bank2sheets.config.AccountConfig;
 import bank2sheets.config.AppConfig;
 import bank2sheets.config.RuntimeState;
 import bank2sheets.config.SheetsConfig;
-import bank2sheets.http.HttpExchangeException;
 import bank2sheets.model.Account;
 import bank2sheets.model.Transaction;
 import bank2sheets.openbanking.TransactionSource;
 import bank2sheets.openbanking.saltedge.SaltEdgeClient;
-import bank2sheets.openbanking.saltedge.SaltEdgeException;
 import bank2sheets.sheets.GoogleSheetsClient;
 import bank2sheets.sheets.SheetRow;
-import bank2sheets.sheets.SheetsException;
 import com.google.gson.JsonObject;
 import java.io.Console;
 import java.nio.file.Path;
@@ -21,6 +18,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -51,12 +49,7 @@ public final class Main {
               GOOGLE_SERVICE_ACCOUNT_B64, GOOGLE_SPREADSHEET_ID (required for `sync`)
             """;
 
-    /** Builds the provider client from config; injected so tests can use a fake HTTP backend. */
-    interface TransactionSourceFactory {
-        TransactionSource create(AppConfig config);
-    }
-
-    private final TransactionSourceFactory sources;
+    private final Function<AppConfig, TransactionSource> sources;
     private final Supplier<AppConfig> config;
     private final Supplier<GoogleSheetsClient> sheets;
     private final RuntimeState state;
@@ -69,7 +62,7 @@ public final class Main {
      * @param stateFile runtime state file that {@code connect} writes to (gitignored)
      * @param waitForEnter interactive pause between printing the URL and confirming the connection
      */
-    Main(TransactionSourceFactory sources, Supplier<AppConfig> config, Supplier<GoogleSheetsClient> sheets,
+    Main(Function<AppConfig, TransactionSource> sources, Supplier<AppConfig> config, Supplier<GoogleSheetsClient> sheets,
             Path stateFile, Runnable waitForEnter) {
         this.sources = sources;
         this.config = config;
@@ -124,7 +117,7 @@ public final class Main {
             return 1;
         }
         try {
-            TransactionSource source = sources.create(cfg);
+            TransactionSource source = sources.apply(cfg);
             String connectUrl = source.connect();
             System.out.println("Open this URL in your browser and authorize BBVA (read-only consent):");
             System.out.println();
@@ -140,7 +133,7 @@ public final class Main {
             state.saveConnectionId(connectionId);
             System.out.println("Connected. Connection id " + connectionId + " saved to " + state.file());
             return 0;
-        } catch (HttpExchangeException | SaltEdgeException | IllegalStateException e) {
+        } catch (Bank2SheetsException | IllegalStateException e) {
             System.err.println("connect: " + e.getMessage());
             return 1;
         }
@@ -148,22 +141,12 @@ public final class Main {
 
     /** Fetches transactions for every configured account and prints them as JSON lines. */
     private int fetch() {
-        AppConfig cfg = config.get();
-        if (cfg.saltEdgeAppId().isBlank() || cfg.saltEdgeSecret().isBlank()) {
-            System.err.println("fetch: SALTEDGE_APP_ID and SALTEDGE_SECRET must be set in the environment");
-            return 1;
-        }
-        AppConfig resolved = withConnectionId(cfg);
-        if (resolved.saltEdgeConnectionId().isBlank()) {
-            System.err.println("fetch: no connection; run `connect` once or set SALTEDGE_CONNECTION_ID");
-            return 1;
-        }
-        if (resolved.accounts().isEmpty()) {
-            System.err.println("fetch: no accounts configured; set BANK2SHEETS_ACCOUNTS (e.g. saltedge:ACCT_ID)");
+        AppConfig resolved = requireFetchConfig("fetch");
+        if (resolved == null) {
             return 1;
         }
         try {
-            TransactionSource source = sources.create(resolved);
+            TransactionSource source = sources.apply(resolved);
             Map<String, String> accountNames = new HashMap<>();
             for (Account account : source.listAccounts()) {
                 accountNames.put(account.id(), account.name());
@@ -178,7 +161,7 @@ public final class Main {
                 }
             }
             return 0;
-        } catch (HttpExchangeException | SaltEdgeException | IllegalStateException e) {
+        } catch (Bank2SheetsException | IllegalStateException e) {
             System.err.println("fetch: " + e.getMessage());
             return 1;
         }
@@ -194,30 +177,43 @@ public final class Main {
     }
 
     /**
+     * Guards shared by {@code fetch} and {@code sync}: credentials, connection,
+     * and accounts must be configured. Prints the command-prefixed error and
+     * returns {@code null} when a guard fails.
+     */
+    private AppConfig requireFetchConfig(String command) {
+        AppConfig cfg = config.get();
+        if (cfg.saltEdgeAppId().isBlank() || cfg.saltEdgeSecret().isBlank()) {
+            System.err.println(command + ": SALTEDGE_APP_ID and SALTEDGE_SECRET must be set in the environment");
+            return null;
+        }
+        AppConfig resolved = withConnectionId(cfg);
+        if (resolved.saltEdgeConnectionId().isBlank()) {
+            System.err.println(command + ": no connection; run `connect` once or set SALTEDGE_CONNECTION_ID");
+            return null;
+        }
+        if (resolved.accounts().isEmpty()) {
+            System.err.println(command + ": no accounts configured; set BANK2SHEETS_ACCOUNTS (e.g. saltedge:ACCT_ID)");
+            return null;
+        }
+        return resolved;
+    }
+
+    /**
      * Fetches transactions for every configured account and appends the ones not
      * already present in the spreadsheet. Dedupe uses the TransactionId column, so
      * repeated runs append nothing new (idempotency). Exits 0 on success and 1 on
      * missing configuration or provider/Sheets errors.
      */
     private int sync() {
-        AppConfig cfg = config.get();
-        if (cfg.saltEdgeAppId().isBlank() || cfg.saltEdgeSecret().isBlank()) {
-            System.err.println("sync: SALTEDGE_APP_ID and SALTEDGE_SECRET must be set in the environment");
-            return 1;
-        }
-        AppConfig resolved = withConnectionId(cfg);
-        if (resolved.saltEdgeConnectionId().isBlank()) {
-            System.err.println("sync: no connection; run `connect` once or set SALTEDGE_CONNECTION_ID");
-            return 1;
-        }
-        if (resolved.accounts().isEmpty()) {
-            System.err.println("sync: no accounts configured; set BANK2SHEETS_ACCOUNTS (e.g. saltedge:ACCT_ID)");
+        AppConfig resolved = requireFetchConfig("sync");
+        if (resolved == null) {
             return 1;
         }
         try {
             GoogleSheetsClient sheetsClient = sheets.get();
             Set<String> existing = sheetsClient.existingTransactionIds();
-            TransactionSource source = sources.create(resolved);
+            TransactionSource source = sources.apply(resolved);
             List<SheetRow> toAppend = new ArrayList<>();
             int fetched = 0;
             for (AccountConfig account : resolved.accounts()) {
@@ -234,7 +230,7 @@ public final class Main {
             System.out.println("sync: fetched " + fetched + " transaction(s), appended " + toAppend.size()
                     + " new row(s), skipped " + (fetched - toAppend.size()) + " duplicate(s)");
             return 0;
-        } catch (HttpExchangeException | SheetsException | SaltEdgeException | IllegalStateException e) {
+        } catch (Bank2SheetsException | IllegalStateException e) {
             System.err.println("sync: " + e.getMessage());
             return 1;
         }

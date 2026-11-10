@@ -1,13 +1,12 @@
 package bank2sheets.sheets;
 
+import bank2sheets.Bank2SheetsException;
+
 /**
  * Raised when a Google Sheets request fails (non-success HTTP status, transport
  * error, or a required configuration value is missing).
- *
- * <p>ponytail: same shape as {@link bank2sheets.openbanking.saltedge.SaltEdgeException};
- * share a common exception if a third client appears.
  */
-public class SheetsException extends RuntimeException {
+public class SheetsException extends Bank2SheetsException {
 
     public SheetsException(String message) {
         super(message);

@@ -13,10 +13,7 @@ import java.util.Map;
 public record SheetsConfig(String serviceAccountB64, String spreadsheetId) {
 
     public static SheetsConfig fromEnv() {
-        return fromEnv(System.getenv());
-    }
-
-    static SheetsConfig fromEnv(Map<String, String> env) {
+        Map<String, String> env = System.getenv();
         return new SheetsConfig(
                 env.getOrDefault("GOOGLE_SERVICE_ACCOUNT_B64", ""),
                 env.getOrDefault("GOOGLE_SPREADSHEET_ID", ""));

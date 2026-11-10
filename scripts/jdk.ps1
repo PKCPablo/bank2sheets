@@ -20,6 +20,9 @@ function Get-JavaExeMajorVersion {
 }
 
 function Get-JdkNameVersion {
+    # ponytail: this name-version parser plus the descending sort in Find-Jdk21Home
+    # exist only to honor the README's "highest jdk-21*" rule; if any JDK 21+ is
+    # acceptable, delete both and return the first working candidate.
     param([string]$Name)
 
     $raw = $Name -replace '^jdk-', ''

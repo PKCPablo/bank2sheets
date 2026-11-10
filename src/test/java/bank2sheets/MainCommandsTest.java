@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import bank2sheets.CliTestSupport.Result;
 import bank2sheets.config.AccountConfig;
 import bank2sheets.config.AppConfig;
 import bank2sheets.config.SheetsConfig;
@@ -14,15 +15,11 @@ import bank2sheets.sheets.GoogleSheetsClient;
 import bank2sheets.sheets.SheetsTestSupport;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonParser;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.PrintStream;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.function.IntSupplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -90,6 +87,8 @@ class MainCommandsTest {
                 {"data": [{"id": "acct-1", "name": "Cuenta BBVA"}]}
                 """);
         http.stub("/transactions?connection_id=conn-1&account_id=acct-1",
+                // ponytail: the repeated transaction JSON payloads across these tests
+                // could be a shared fixture constant.
                 """
                 {"data": [
                   {"id": "t1", "description": "Nomina", "amount": 1200.50, "currency_code": "EUR",
@@ -225,7 +224,7 @@ class MainCommandsTest {
         FakeHttp http = new FakeHttp();
         Path stateFile = tempDir.resolve("state.properties");
 
-        Result result = capture(() -> new Main(c -> new SaltEdgeClient(c, http), () -> config("conn-1"),
+        Result result = CliTestSupport.capture(() -> new Main(c -> new SaltEdgeClient(c, http), () -> config("conn-1"),
                 () -> GoogleSheetsClient.create(new SheetsConfig("", "")), stateFile, () -> { })
                 .dispatch(new String[] {"sync"}));
 
@@ -290,32 +289,8 @@ class MainCommandsTest {
 
     private static Result runCli(FakeHttp http, FakeSheetsHttp sheets, Path stateFile, AppConfig config,
             String... args) {
-        return capture(() -> new Main(c -> new SaltEdgeClient(c, http), () -> config,
+        return CliTestSupport.capture(() -> new Main(c -> new SaltEdgeClient(c, http), () -> config,
                 () -> new GoogleSheetsClient(SheetsTestSupport.config(), sheets), stateFile, () -> { })
                 .dispatch(args));
-    }
-
-    /**
-     * Runs the action while capturing System.out/System.err, then restores them.
-     *
-     * <p>ponytail: mirrors MainTest.capture; extract a shared test helper on next use.
-     */
-    private static Result capture(IntSupplier action) {
-        ByteArrayOutputStream stdout = new ByteArrayOutputStream();
-        ByteArrayOutputStream stderr = new ByteArrayOutputStream();
-        PrintStream originalOut = System.out;
-        PrintStream originalErr = System.err;
-        try {
-            System.setOut(new PrintStream(stdout, true, StandardCharsets.UTF_8));
-            System.setErr(new PrintStream(stderr, true, StandardCharsets.UTF_8));
-            int exitCode = action.getAsInt();
-            return new Result(exitCode, stdout.toString(StandardCharsets.UTF_8), stderr.toString(StandardCharsets.UTF_8));
-        } finally {
-            System.setOut(originalOut);
-            System.setErr(originalErr);
-        }
-    }
-
-    private record Result(int exitCode, String stdout, String stderr) {
     }
 }
