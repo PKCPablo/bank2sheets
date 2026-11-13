@@ -1,7 +1,7 @@
 ---
-status: in-progress
+status: completed
 created: 2026-11-13
-task: 2/3
+task: 3/3
 required_gates:
   architect_review: true
   memory_update: true
@@ -199,7 +199,7 @@ Only if the user explicitly asks.
 Run: `.\scripts\mvn.ps1 test`
 Expected: green, unchanged test count unless new tests were added in Tasks 1-2.
 Human: the real `connect`/`fetch`/`sync` results above.
-Status (2026-11-13): sandbox `connect`/`fetch`/`sync`-twice passed (17 then 0 rows); production real-BBVA run pending.
+Status (2026-11-14): sandbox `connect`/`fetch`/`sync`-twice passed 2026-11-13 (17 then 0 rows); production real-BBVA run passed 2026-11-14 (`fetch` 171 transactions; `sync` twice 171 then 0 rows).
 
 **Step 5: Commit**
 

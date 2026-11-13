@@ -157,11 +157,11 @@ Rejected alternatives (one-line reasons, from the Task 2 matrix):
 
 Scope of the chosen mode: **restricted production only** (personal use, own linked accounts). Full production (contract + KYB) is explicitly out of scope.
 
-Preconditions / owner actions (pending): create the Enable Banking account and production application; link own BBVA account(s) to activate restricted mode; confirm the BBVA connect/SCA flow and transaction retrieval work. If that fails, this decision is reopened.
+Preconditions / owner actions (completed 2026-11-14): created the Enable Banking production application, linked the real BBVA account(s) in restricted mode, and confirmed the connect/SCA flow and transaction retrieval (`fetch` 171 transactions; `sync` twice 171 then 0 rows).
 
 Invariants preserved: the `TransactionSource` seam, AIS-only read consent, no new runtime dependency without owner approval, and test-spreadsheet isolation.
 
-Follow-up: implemented by `plans/2026-11-13_171738-enable-banking-adapter.md` (Tasks 1-2 shipped: `EnableBankingClient`, `ProviderSources` factory, env/state contract, fake-HTTP tests; sandbox `connect`/`fetch`/`sync`-twice validated 2026-11-13; production real-BBVA validation pending); tracked in GitHub issue #3.
+Follow-up: implemented by `plans/2026-11-13_171738-enable-banking-adapter.md` (Tasks 1-2 shipped: `EnableBankingClient`, `ProviderSources` factory, env/state contract, fake-HTTP tests; sandbox `connect`/`fetch`/`sync`-twice validated 2026-11-13; production real-BBVA validated 2026-11-14: `fetch` 171 transactions, `sync` twice 171 then 0 rows); tracked in GitHub issue #3.
 
 ## Risks (accepted)
 
