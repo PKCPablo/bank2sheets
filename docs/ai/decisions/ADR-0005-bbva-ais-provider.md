@@ -1,7 +1,8 @@
 # ADR-0005: BBVA AIS provider decision — Salt Edge enablement vs replacement provider
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-11-12
+- Decision date: 2026-11-13
 
 ## Context
 
@@ -34,6 +35,8 @@ The Salt Edge application is currently in **Pending** status (owner-provided Cli
 | Test | Real banks | up to 100 | free of charge, 90-day window |
 | Live | Real banks | unlimited | billed per request |
 
+Salt Edge remains a possible 90-day free validation fallback only if the Enable Banking path fails, but it is not the planned provider.
+
 To upgrade from Pending to Test, Salt Edge requires: (1) Application Information in the Applications section, (2) Company Information, (3) valid Callback URLs, and (4) a Test access request on the "request test access" page; assessment takes up to two business days. Data destruction (customers, connections, accounts, transactions) is allowed while the application is not Live.
 
 ### Test duration and Live transition (documented, 2026-11-12)
@@ -65,6 +68,8 @@ Sources: owner-provided Salt Edge Client Dashboard, 2026-11-12; Salt Edge V6 doc
 
 ## Support request draft (owner sends; do not put real credentials in the repo)
 
+**Not sent — closed by the 2026-11-13 decision.**
+
 > Subject: Enabling `bbva_es` (BBVA Spain AIS) for our Service key
 >
 > Hello,
@@ -89,6 +94,8 @@ Ticket id / date sent: _pending (owner records after sending)_
 Response: _pending (appended when received, or when the agreed wait window — proposal: 10 business days — expires)_
 
 ## Validation
+
+**Not executed — superseded by the 2026-11-13 decision (Salt Edge Test/Live not pursued).** Content kept for history.
 
 The 2026-10-27 catalog results above are agent-captured evidence (from `docs/ai/logs/2026-10.md` and issue #3), not owner-verified. The owner must re-run the four read-only checks below against the current Service key and confirm the state still holds before Task 3.
 
@@ -131,12 +138,41 @@ Screened 2026-11-13 from public official documentation only (no accounts created
 
 - **Assumption**: Powens' hosted widget can be adapted to a local CLI flow (no public doc was read confirming a pure-redirect callback mode for AIS).
 - **Assumption**: Tink's BBVA ES AIS scope and GoCardless' historical BBVA coverage — not verifiable from public pages without an account or sales contact.
-- **Pending owner confirmation**: Enable Banking full-production contract terms (minimum monthly invoice amount, KYB requirement for a personal/solo project — KYB is company-based per the FAQ); Powens production pricing and whether a personal-use arrangement is possible at all. Neither provider was contacted, per task constraints.
+- **Pending owner confirmation**: Enable Banking full-production contract terms (minimum monthly invoice amount, KYB requirement for a personal/solo project — KYB is company-based per the FAQ); Powens production pricing and whether a personal-use arrangement is possible at all. Neither provider was contacted, per task constraints. Note: restricted production does **not** require a contract/KYB (full production does), so the open KYB item does not block the chosen mode. The Powens/Tink/GoCardless assumptions are historical (those candidates were rejected).
 - Enable Banking's free restricted-production tier has **no stated time limit** (the application stays active until an agreement is signed; the ToS grants no permanent vested right to continued use) per its ToS and linked-accounts docs (`https://enablebanking.com/terms/` — 2026-11-13; `https://enablebanking.com/docs/api/linked-accounts/` — 2026-11-13); Powens', Tink's, and TrueLayer's free tiers are permanent **sandboxes** (mock data only, no production access). Salt Edge's Test tier remains the only free *real-data* tier among all options, but it is **time-boxed** (90 days).
 
-## Decision (Task 3 — placeholder)
+## Decision (2026-11-13)
 
-To be filled by Task 3 once the Salt Edge answer arrives (or the wait window expires) and the alternatives matrix is complete. The final decision must not select a replacement provider based on Pending-status evidence; it requires the Test-status re-check first. Outcome A, B, or C as defined in Context; the decision must preserve the `TransactionSource` seam, AIS-only read consent, no new runtime dependency without owner approval, and test-spreadsheet isolation.
+**Outcome B — replacement provider chosen: Enable Banking**, in its free restricted-production mode (personal, non-commercial use; only the accounts the owner links).
+
+Why Enable Banking: it is the only candidate with documented BBVA ES AIS coverage *and* a free path usable by a personal project — free restricted production with no stated time limit, no contract, only own linked accounts, and the BBVA redirect flow + push-notification SCA documented.
+
+Rejected alternatives (one-line reasons, from the Task 2 matrix):
+
+- **Salt Edge** — Live requires a paid written Service Provision Agreement with a legal entity; Test is time-boxed to 90 days; the owner will not pay for any provider.
+- **Powens** — sales-led production, no public personal pricing.
+- **Tink** — sales-led, no pay-per-use option.
+- **TrueLayer** — production explicitly excludes personal/hobbyist projects.
+- **GoCardless** — new signups disabled (ADR-0002 rejection re-verified 2026-11-13).
+
+Scope of the chosen mode: **restricted production only** (personal use, own linked accounts). Full production (contract + KYB) is explicitly out of scope.
+
+Preconditions / owner actions (pending): create the Enable Banking account and production application; link own BBVA account(s) to activate restricted mode; confirm the BBVA connect/SCA flow and transaction retrieval work. If that fails, this decision is reopened.
+
+Invariants preserved: the `TransactionSource` seam, AIS-only read consent, no new runtime dependency without owner approval, and test-spreadsheet isolation.
+
+Follow-up: a separate implementation plan will cover the Enable Banking adapter, the provider-selection factory keyed by `BANK2SHEETS_ACCOUNTS`, the Enable Banking env/state contract, and fake-HTTP tests. That plan is **pending creation by the planner**; once created it must be linked from this ADR and from GitHub issue #3 (neither link exists yet).
+
+## Risks (accepted)
+
+- Restricted mode only exposes the specific accounts the owner links; linking is per-account and once linked, only those accounts are returned.
+- ASPSP background-fetch rate limits are bank-specific (commonly about 4/day) and not guaranteed; the CLI must tolerate `ASPSP_RATE_LIMIT_EXCEEDED`.
+- Consent/session renewal: session validity is ASPSP-dependent (commonly up to ~180 days), the app JWT lasts at most 24 h, and re-authorisation requires a fresh redirect/SCA flow.
+- The free restricted-production terms do not grant a permanent vested right; Enable Banking can change or withdraw the allowance.
+- Restricted mode is personal/non-commercial only; it cannot serve other users or public production.
+- The Enable Banking app needs an RSA signing key — a new secret type that must live only in the environment, never in the repo.
+- Salt Edge code remains in the tree until the adapter lands, so dead/fallback code must be removed or justified then.
+- The Salt Edge Test fallback (90 days) would itself require a Pending→Test upgrade and a public callback URL, so it is not a frictionless fallback.
 
 ## Non-goals
 
@@ -147,10 +183,9 @@ To be filled by Task 3 once the Salt Edge answer arrives (or the wait window exp
 
 ## Consequences
 
-- Until the decision is recorded, real BBVA remains blocked; the plan stays in research-and-decision mode.
-- The Pending → Test upgrade (free) is the cheapest next diagnostic and precedes any Provider Key or alternative-provider work.
-- If outcome A: no code change; next step is owner-gated real `connect` (SCA) + `sync` validation.
-- If outcome B: a separate implementation plan covers the provider adapter, provider-selection factory keyed by `BANK2SHEETS_ACCOUNTS`, provider-specific env/state, and fake-HTTP tests.
-- If outcome C: a concrete revisit condition/date is recorded and issue #3 stays open as blocked.
-- Even if `bbva_es` works in Test (outcome A), the free window is 90 days; the follow-up must either secure a written extension or evaluate Live/alternative before expiry.
-- Live requires a legal-entity service agreement, so it may be unsuitable for a personal project; no public pricing.
+- The decision is recorded: Enable Banking restricted production is the target provider; real BBVA access is conditionally unblocked: it is not verified until the owner completes the Enable Banking setup, links their BBVA account(s), and confirms the connect/SCA flow and transaction retrieval.
+- The current code still wires Salt Edge; it stays in place until the Enable Banking adapter lands.
+- Env/state/factory changes are deferred to the follow-up implementation plan; this decision adds no dependency.
+- Outcome A (Salt Edge enablement) was not chosen: no support ticket was sent, no Test upgrade was requested, and no Live contract will be signed.
+- Outcome C (still blocked) did not apply: a viable free path exists via Enable Banking.
+- Salt Edge's free Test tier (90 days, real data) remains a fallback only if the Enable Banking path fails.

@@ -49,3 +49,10 @@ Key research facts (2026-08-04):
 - Salt Edge API migrated from the obsolete V5 to **V6** (`https://www.saltedge.com/api/v6`). Connect uses `POST /connections/connect` (V5's `/connect_sessions/create` no longer exists); the request/response shape is unchanged (`data.customer_id` + `data.consent.scopes` + `data.attempt.return_to` → `data.connect_url`), so the `TransactionSource` contract is untouched.
 - Credentials are **Service API keys** (dashboard API Keys page, type Service); App API keys don't work in V6. The `App-id`/`Secret` headers and env var names are unchanged — only the key type/values change.
 - Consent scopes are the V6 values `accounts` (covers accounts + balance) and `transactions`; AIS-only read consent is unchanged (PIS never requested).
+
+## Implementation note (2026-11-13, BBVA provider superseded)
+
+- ADR-0005 supersedes this ADR's BBVA-provider decision: Salt Edge is dropped for BBVA because Live requires a paid written Service Provision Agreement with a legal entity and Test is time-boxed to 90 days; Enable Banking restricted production (free, personal use, own linked accounts) is the chosen provider.
+- The earlier "Salt Edge free production tier (100 live connections)" statement refers to the 90-day Test status, not free production.
+- The Powens (ex Budget Insight) note for Trade Republic survives unchanged.
+- The `TransactionSource` seam and per-account provider selection still stand; the provider-selection factory keyed by `BANK2SHEETS_ACCOUNTS` is still pending in the follow-up plan.
