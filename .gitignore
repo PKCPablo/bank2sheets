@@ -12,6 +12,9 @@ bank2sheets-state.properties
 .env.*
 !.env.example
 
+# Local PR body scratch files
+temp/
+
 # Local keys/certificates (never commit)
 *.pem
 *.key
