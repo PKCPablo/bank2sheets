@@ -1,0 +1,42 @@
+name: Scheduled sync
+
+on:
+  schedule:
+    # Daily at 06:00 UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scheduled-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'PKCPablo/bank2sheets'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Build fat JAR (tests + JaCoCo)
+        run: mvn -B -q package
+
+      - name: Sync transactions to Google Sheets
+        env:
+          ENABLE_BANKING_APP_ID: ${{ secrets.ENABLE_BANKING_APP_ID }}
+          ENABLE_BANKING_PRIVATE_KEY_B64: ${{ secrets.ENABLE_BANKING_PRIVATE_KEY_B64 }}
+          ENABLE_BANKING_REDIRECT_URL: ${{ secrets.ENABLE_BANKING_REDIRECT_URL }}
+          ENABLE_BANKING_SESSION_ID: ${{ secrets.ENABLE_BANKING_SESSION_ID }}
+          BANK2SHEETS_ACCOUNTS: ${{ secrets.BANK2SHEETS_ACCOUNTS }}
+          GOOGLE_SERVICE_ACCOUNT_B64: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_B64 }}
+          GOOGLE_SPREADSHEET_ID: ${{ secrets.GOOGLE_SPREADSHEET_ID }}
+        run: java -jar target/bank2sheets-0.1.0-SNAPSHOT.jar sync

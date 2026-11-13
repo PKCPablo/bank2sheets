@@ -84,6 +84,28 @@ For the Salt Edge fallback, set `SALTEDGE_APP_ID`, `SALTEDGE_SECRET`, `SALTEDGE_
 
 The runtime state file `bank2sheets-state.properties` holds only the provider id (`enablebanking.session_id` or `saltedge.connection_id`; no credentials, no bank tokens) and is listed in `.gitignore`.
 
+## Scheduled sync (GitHub Actions)
+
+`.github/workflows/sync.yml` builds the fat JAR and runs `sync` daily at 06:00 UTC and on manual dispatch (`workflow_dispatch`). The runner is ephemeral, so the workflow never runs `connect`; it uses the session id from the `ENABLE_BANKING_SESSION_ID` secret.
+
+Required repository secrets (Settings → Secrets and variables → Actions → New repository secret):
+
+| Secret | Value |
+| --- | --- |
+| `ENABLE_BANKING_APP_ID` | Enable Banking application id |
+| `ENABLE_BANKING_PRIVATE_KEY_B64` | Base64-encoded PKCS#8 PEM private key |
+| `ENABLE_BANKING_REDIRECT_URL` | Registered redirect URL (production HTTPS Pages URL) |
+| `ENABLE_BANKING_SESSION_ID` | Session id from local `bank2sheets-state.properties` (`enablebanking.session_id`) |
+| `BANK2SHEETS_ACCOUNTS` | e.g. `enablebanking:<uuid>` |
+| `GOOGLE_SERVICE_ACCOUNT_B64` | Base64-encoded Google service account JSON |
+| `GOOGLE_SPREADSHEET_ID` | Target spreadsheet id |
+
+Caveats:
+
+- The session id expires after an ASPSP-dependent validity period (commonly up to ~180 days) or when you re-run `connect` locally; when that happens, copy the fresh `enablebanking.session_id` from `bank2sheets-state.properties` into the `ENABLE_BANKING_SESSION_ID` secret.
+- For the first manual run, point `GOOGLE_SPREADSHEET_ID` at the disposable test sheet; switch the secret to the real spreadsheet after verifying the appended rows.
+- GitHub disables scheduled workflows on public repos after 60 days of no repository activity; a manual `workflow_dispatch` run or any repo activity re-enables the schedule.
+
 ## Google Sheets layout
 
 `sync` targets the first sheet with columns `Fecha`, `Descripción`, `Importe`, `Moneda`, `TransactionId`. Rows are appended with `valueInputOption=RAW`, so amounts (e.g. `1200.50`) stay numeric cells instead of text or formulas. The header row is written once when missing. TransactionId is the dedupe key: running `sync` twice appends no duplicates.

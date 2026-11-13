@@ -13,6 +13,5 @@ Required labels: `status:to-do`, `status:doing`, `status:in-review`, `status:blo
 
 ## Deferred / Pending
 
-- GitHub Actions cron workflow for scheduled sync — deferred from MVP plan
-  `plans/2026-08-04-mvp-pipeline-local.md`; tracked in GitHub issue #4.
+- ~~GitHub Actions cron workflow for scheduled sync~~ — implemented as `.github/workflows/sync.yml` (daily 06:00 UTC + `workflow_dispatch`); verification pending the owner adding the Actions secrets and running `workflow_dispatch` (GitHub issue #4).
 
