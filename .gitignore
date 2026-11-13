@@ -9,3 +9,15 @@ bank2sheets-state.properties
 
 # Local environment/secrets file (never commit credentials)
 .env
+.env.*
+!.env.example
+
+# Local PR body scratch files
+temp/
+
+# Local keys/certificates (never commit)
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore

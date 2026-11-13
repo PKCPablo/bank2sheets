@@ -10,13 +10,9 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
+import bank2sheets.http.Rs256Jwt;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.security.GeneralSecurityException;
-import java.security.KeyFactory;
-import java.security.PrivateKey;
-import java.security.Signature;
-import java.security.spec.PKCS8EncodedKeySpec;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.HashSet;
@@ -153,10 +149,7 @@ public final class GoogleSheetsClient {
         claims.addProperty("aud", tokenUri);
         claims.addProperty("iat", now);
         claims.addProperty("exp", now + 3600);
-        String signingInput = base64Url(header.toString().getBytes(StandardCharsets.UTF_8))
-                + "." + base64Url(claims.toString().getBytes(StandardCharsets.UTF_8));
-        String assertion = signingInput + "."
-                + base64Url(sign(signingInput.getBytes(StandardCharsets.UTF_8), privateKey.getAsString()));
+        String assertion = Rs256Jwt.encode(header.toString(), claims.toString(), privateKey.getAsString());
 
         String form = "grant_type="
                 + URLEncoder.encode("urn:ietf:params:oauth:grant-type:jwt-bearer", StandardCharsets.UTF_8)
@@ -189,24 +182,6 @@ public final class GoogleSheetsClient {
         }
     }
 
-    /** Signs the JWT input with the service account RSA key (PKCS#8 PEM). */
-    private static byte[] sign(byte[] data, String privateKeyPem) {
-        try {
-            String der = privateKeyPem
-                    .replace("-----BEGIN PRIVATE KEY-----", "")
-                    .replace("-----END PRIVATE KEY-----", "")
-                    .replaceAll("\\s", "");
-            PrivateKey privateKey = KeyFactory.getInstance("RSA")
-                    .generatePrivate(new PKCS8EncodedKeySpec(Base64.getMimeDecoder().decode(der)));
-            Signature signature = Signature.getInstance("SHA256withRSA");
-            signature.initSign(privateKey);
-            signature.update(data);
-            return signature.sign();
-        } catch (GeneralSecurityException | IllegalArgumentException e) {
-            throw new SheetsException("Cannot sign Google service account JWT", e);
-        }
-    }
-
     private JsonObject readValues(String range, String token) {
         Response response = http.exchange("GET", valuesUrl(range),
                 Map.of("Authorization", "Bearer " + token), null);
@@ -234,9 +209,5 @@ public final class GoogleSheetsClient {
 
     private String appendUrl() {
         return valuesUrl(RANGE) + ":append?valueInputOption=" + VALUE_INPUT_OPTION;
-    }
-
-    private static String base64Url(byte[] bytes) {
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 }
