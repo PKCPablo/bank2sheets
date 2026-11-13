@@ -59,6 +59,13 @@ class EnableBankingConfigTest {
     }
 
     @Test
+    void acceptsHttpsPagesRedirectUrl() {
+        EnableBankingConfig config = new EnableBankingConfig(
+                "app-1", KEY, "https://pkcpablo.github.io/bank2sheets/callback.html");
+        assertEquals("https://pkcpablo.github.io/bank2sheets/callback.html", config.redirectUrl());
+    }
+
+    @Test
     void rejectsRedirectUrlWithoutExplicitPort() {
         Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
                 () -> new EnableBankingConfig("app-1", KEY, "http://127.0.0.1/cb"));
@@ -66,10 +73,23 @@ class EnableBankingConfigTest {
     }
 
     @Test
-    void rejectsHttpsRedirectUrl() {
+    void acceptsHttpsRedirectWithExplicitPort() {
+        EnableBankingConfig config = new EnableBankingConfig("app-1", KEY, "https://127.0.0.1:8765/cb");
+        assertEquals("https://127.0.0.1:8765/cb", config.redirectUrl());
+    }
+
+    @Test
+    void rejectsUnsupportedSchemeRedirectUrl() {
         Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
-                () -> new EnableBankingConfig("app-1", KEY, "https://127.0.0.1:8765/cb"));
-        assertTrue(error.getMessage().contains("http scheme"));
+                () -> new EnableBankingConfig("app-1", KEY, "ftp://example.com/cb"));
+        assertTrue(error.getMessage().contains("http or https scheme"));
+    }
+
+    @Test
+    void rejectsHttpsRedirectUrlWithBlankHost() {
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
+                () -> new EnableBankingConfig("app-1", KEY, "https:///cb"));
+        assertTrue(error.getMessage().contains("non-blank host"));
     }
 
     @Test

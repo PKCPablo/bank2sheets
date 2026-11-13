@@ -25,7 +25,7 @@ required_gates:
 - `AppConfig` reads four `SALTEDGE_*` variables; `parseAccounts` rejects every provider except `saltedge` (`AppConfig.java:62-64`). `AccountConfig` documents the same and carries a `ponytail:` note that `provider` is never read.
 - `RuntimeState` persists exactly one key, `saltedge.connection_id` (`RuntimeState.java:17`).
 - `GoogleSheetsClient` already signs RS256 JWTs with the JDK: private `sign(byte[], String)` (PKCS#8 PEM) and `base64Url(byte[])` (`GoogleSheetsClient.java:192-208,239-241`). This is the code to reuse, not duplicate.
-- Tests: 97 JUnit 5 tests after Tasks 1-2 and the first-run connect fix (44 at planning time), `.\scripts\mvn.ps1 test`, JaCoCo 80% line gate. `MainCommandsTest` drives `connect`/`fetch`/`sync` end to end with `FakeHttp` + `FakeSheetsHttp`; `AppConfigTest` and `RuntimeStateTest` cover config/state.
+- Tests: 104 JUnit 5 tests after Tasks 1-2, the first-run connect fix, and the HTTPS paste fallback (44 at planning time), `.\scripts\mvn.ps1 test`, JaCoCo 80% line gate. `MainCommandsTest` drives `connect`/`fetch`/`sync` end to end with `FakeHttp` + `FakeSheetsHttp`; `AppConfigTest` and `RuntimeStateTest` cover config/state.
 - ADR-0005 (accepted 2026-11-13) selects Enable Banking restricted production and rejects Salt Edge for BBVA (Live = paid legal-entity contract; Test = 90 days). Its recorded risks: only owner-linked accounts, ASPSP rate limits, consent/session renewal, no vested right to the free tier, personal/non-commercial only, RSA key is a new secret, Salt Edge code lingers until removed, and the Test fallback needs a public callback URL.
 - Enable Banking API facts verified 2026-11-13 (`https://enablebanking.com/docs/api/reference/`, `https://enablebanking.com/docs/faq/`, `https://enablebanking.com/docs/api/linked-accounts/`, `https://enablebanking.com/terms/`):
   - Base URL `https://api.enablebanking.com`; every request carries `Authorization: Bearer <JWT>`.
@@ -36,7 +36,7 @@ required_gates:
 
 ## Blocking decisions and gates
 
-1. **Authorization-code capture (blocking, recommend loopback).** The CLI has no web server. Recommended: register `http://127.0.0.1:53682/bank2sheets/callback` as the application redirect URL and start a loopback HTTP listener in `connect`; `findConnectionId` waits for `code`/`state`, validates `state`, then exchanges the code. Fallback if Enable Banking rejects an `http://127.0.0.1` redirect for a production app: prompt the owner to paste the full callback URL and parse `code`/`state`. Owner must confirm which path the Enable Banking app form accepts before Task 1 starts.
+1. **Authorization-code capture (resolved 2026-11-13).** Sandbox keeps the `http://127.0.0.1:8765/bank2sheets/callback` loopback listener (bound before the URL; `code`/`state` captured locally). Enable Banking production apps reject `http` redirects, so production uses the static GitHub Pages callback `https://pkcpablo.github.io/bank2sheets/callback.html` (served from `/docs`) plus `PasteAuthorizationCodeReceiver`, which prompts the owner to paste the full callback URL. The owner enables Pages and registers that URL in the production app.
 2. **Private-key format and secret transport (blocking, recommend PKCS#8 base64).** Use `ENABLE_BANKING_PRIVATE_KEY_B64` holding a base64 PKCS#8 PEM (`-----BEGIN PRIVATE KEY-----`), mirroring `GOOGLE_SERVICE_ACCOUNT_B64`. If the owner's key is PKCS#1 (`BEGIN RSA PRIVATE KEY`), document the `openssl pkcs8 -topk8 -nocrypt` conversion rather than adding a parser.
 3. **Salt Edge retention (recommend keep selectable).** Keep `saltedge` accepted by the factory for one release as a fallback; removing `SaltEdgeClient` and its tests is a separate cleanup once Enable Banking has been validated. Reject this if the owner prefers deletion now.
 4. **Transaction id prefix (recommend `eb:`).** Prefix every Enable Banking `Transaction.id` with `eb:` so it cannot collide with existing Salt Edge numeric ids in the same sheet. The Sheets dedupe key remains the TransactionId column.
@@ -55,15 +55,19 @@ required_gates:
 - Create: `src/main/java/bank2sheets/openbanking/enablebanking/EnableBankingException.java`
 - Create: `src/main/java/bank2sheets/openbanking/enablebanking/AuthorizationCodeReceiver.java`
 - Create: `src/main/java/bank2sheets/openbanking/enablebanking/LoopbackAuthorizationCodeReceiver.java`
+- Create: `src/main/java/bank2sheets/openbanking/enablebanking/PasteAuthorizationCodeReceiver.java`
+- Create: `docs/callback.html`
 - Create: `src/test/java/bank2sheets/http/Rs256JwtTest.java`
 - Create: `src/test/java/bank2sheets/openbanking/enablebanking/EnableBankingClientTest.java`
 - Create: `src/test/java/bank2sheets/openbanking/enablebanking/LoopbackAuthorizationCodeReceiverTest.java`
+- Create: `src/test/java/bank2sheets/openbanking/enablebanking/PasteAuthorizationCodeReceiverTest.java`
 - Validate: the files above; `.\scripts\mvn.ps1 test`
 
 **Step 1: Establish expected behaviour**
 
 - `Rs256Jwt.encode(header, claims, pkcs8Pem)` produces `base64url(header).base64url(claims).base64url(signature)` with `SHA256withRSA`, raw base64url without padding; `GoogleSheetsClient` keeps its current JWT request/response behaviour using it.
-- `EnableBankingConfig` exposes `appId`, `privateKeyB64` (PKCS#8 PEM), and `redirectUrl`; a blank field fails fast with a message naming the missing `ENABLE_BANKING_*` variable.
+- `EnableBankingConfig` exposes `appId`, `privateKeyB64` (PKCS#8 PEM), and `redirectUrl`; a blank field fails fast with a message naming the missing `ENABLE_BANKING_*` variable. The redirect accepts `http` loopback (explicit port/path) or `https` (non-blank host/path).
+- Redirect mode: `http` loopback uses `LoopbackAuthorizationCodeReceiver`; `https` (production) uses `PasteAuthorizationCodeReceiver` and the Pages callback page `docs/callback.html`, which displays the `code`/`state` for the owner to paste.
 - `connect()`: `GET /aspsps?country=ES&psu_type=personal&service=AIS`, locate BBVA by name, read `maximum_consent_validity` (fallback 90 days if absent), generate a UUID `state`, `POST /auth` with `access.valid_until`, `aspsp {name: "BBVA", country: "ES"}`, `redirect_url`, `state`, `psu_type: "personal"`, and return the response `url`.
 - `findConnectionId()`: receive the callback URL (or code), reject a `state` mismatch, `POST /sessions` with `{"code": ...}`, and return `session_id`.
 - `isActive(id)`: `GET /sessions/{id}`; true only when `status == "AUTHORIZED"`.
@@ -95,6 +99,7 @@ required_gates:
 - `EnableBankingConfig`: record plus `fromEnv(Map<String,String>)` and `fromEnv()`; no `AppConfig` changes in this task.
 - `EnableBankingClient`: constructor takes `EnableBankingConfig`, `HttpExchange`, `AuthorizationCodeReceiver`, and a `LongSupplier epochSeconds` (default `Instant.now().getEpochSecond()`) so token claims are testable. JWT TTL 3600 s. Keep all HTTP on `HttpExchange`, never `HttpClient` directly.
 - `AuthorizationCodeReceiver`: `String awaitCallbackUrl()`; `LoopbackAuthorizationCodeReceiver` implements it with the JDK HTTP server and a timeout. Use `com.sun.net.httpserver.HttpServer`; if the build cannot resolve `jdk.httpserver`, use a raw `ServerSocket` instead and note the choice.
+- `PasteAuthorizationCodeReceiver`: prompts for the full callback URL (testable `Supplier<String>`), trims it, and rejects blank input; used for `https` production redirects. `EnableBankingConfig` accepts `http` loopback or `https` redirects.
 - Do not touch `Main`, `AppConfig`, or `RuntimeState` in this task.
 
 **Step 4: Run test to verify pass**

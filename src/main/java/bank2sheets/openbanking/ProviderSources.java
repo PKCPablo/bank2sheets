@@ -3,8 +3,10 @@ package bank2sheets.openbanking;
 import bank2sheets.Bank2SheetsException;
 import bank2sheets.config.AppConfig;
 import bank2sheets.http.RealHttpExchange;
+import bank2sheets.openbanking.enablebanking.AuthorizationCodeReceiver;
 import bank2sheets.openbanking.enablebanking.EnableBankingClient;
 import bank2sheets.openbanking.enablebanking.LoopbackAuthorizationCodeReceiver;
+import bank2sheets.openbanking.enablebanking.PasteAuthorizationCodeReceiver;
 import bank2sheets.openbanking.saltedge.SaltEdgeClient;
 import java.net.URI;
 
@@ -37,10 +39,14 @@ public final class ProviderSources {
     }
 
     private static TransactionSource enableBanking(AppConfig cfg) {
-        // EnableBankingConfig validates the three credentials and the loopback redirect URL.
+        // EnableBankingConfig validates the three credentials and the redirect URL
+        // (http loopback for sandbox, https paste fallback for production).
+        AuthorizationCodeReceiver receiver = cfg.enableBankingRedirectUrl().toLowerCase().startsWith("https://")
+                ? new PasteAuthorizationCodeReceiver()
+                : new LoopbackAuthorizationCodeReceiver(URI.create(cfg.enableBankingRedirectUrl()));
         EnableBankingClient client = new EnableBankingClient(cfg.enableBankingConfig(),
                 new RealHttpExchange(),
-                new LoopbackAuthorizationCodeReceiver(URI.create(cfg.enableBankingRedirectUrl())));
+                receiver);
         if (!cfg.enableBankingSessionId().isBlank()) {
             client.setSessionId(cfg.enableBankingSessionId());
         }

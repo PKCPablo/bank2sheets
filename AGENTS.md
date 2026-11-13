@@ -27,7 +27,7 @@ bank2sheets is a personal Java 21 CLI that fetches BBVA transactions through Ope
 
 ## Testing
 
-- Full suite: `.\scripts\mvn.ps1 test` — 97 JUnit 5 tests, JaCoCo report at `target/site/jacoco/index.html`, and an 80% line-coverage gate that fails the build below 80%.
+- Full suite: `.\scripts\mvn.ps1 test` — 104 JUnit 5 tests, JaCoCo report at `target/site/jacoco/index.html`, and an 80% line-coverage gate that fails the build below 80%.
 - Single test: `.\scripts\mvn.ps1 test '-Dtest=SaltEdgeClientTest'` or `'-Dtest=SaltEdgeClientTest#methodName'` (Maven Surefire).
 - No lint or typecheck command is configured; `.editorconfig` is the only style enforcement.
 

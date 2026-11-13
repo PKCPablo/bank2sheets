@@ -12,9 +12,11 @@ import java.util.Map;
  *   <li>{@code ENABLE_BANKING_PRIVATE_KEY_B64} - base64-encoded PKCS#8 PEM private key
  *       ({@code -----BEGIN PRIVATE KEY-----}; convert PKCS#1 keys with
  *       {@code openssl pkcs8 -topk8 -nocrypt})</li>
- *   <li>{@code ENABLE_BANKING_REDIRECT_URL} - application redirect URL (loopback callback);
- *       must be {@code http} on {@code 127.0.0.1}/{@code localhost} with an explicit port
- *       and a non-empty path, so the local listener can bind it</li>
+ *   <li>{@code ENABLE_BANKING_REDIRECT_URL} - application redirect URL; two modes:
+ *       {@code http} on {@code 127.0.0.1}/{@code localhost} with an explicit port and a
+ *       non-empty path (sandbox loopback listener), or {@code https} with a non-blank
+ *       host and a non-empty path (production, e.g. the GitHub Pages callback page,
+ *       where the user pastes the callback URL into the CLI)</li>
  * </ul>
  */
 public record EnableBankingConfig(String appId, String privateKeyB64, String redirectUrl) {
@@ -45,10 +47,16 @@ public record EnableBankingConfig(String appId, String privateKeyB64, String red
     }
 
     /**
-     * The redirect URL is bound by a local loopback HTTP listener, so it must be
-     * http on 127.0.0.1/localhost with an explicit port (an omitted port would
-     * surface as a raw {@code IllegalArgumentException} from
-     * {@code InetSocketAddress}) and a non-empty path.
+     * Two redirect modes are accepted:
+     * <ul>
+     *   <li>{@code http} loopback: bound by a local HTTP listener, so it must point at
+     *       127.0.0.1/localhost with an explicit port (an omitted port would surface as a
+     *       raw {@code IllegalArgumentException} from {@code InetSocketAddress}) and a
+     *       non-empty path.</li>
+     *   <li>{@code https}: served by an external page (e.g. the GitHub Pages callback);
+     *       requires a non-blank host and a non-empty path; the user pastes the callback
+     *       URL into the CLI.</li>
+     * </ul>
      */
     private static void validateRedirectUrl(String url) {
         URI uri;
@@ -57,19 +65,26 @@ public record EnableBankingConfig(String appId, String privateKeyB64, String red
         } catch (IllegalArgumentException e) {
             throw new Bank2SheetsException("ENABLE_BANKING_REDIRECT_URL is not a valid URL: " + url, e);
         }
-        if (!"http".equalsIgnoreCase(uri.getScheme())) {
+        String scheme = uri.getScheme();
+        if (scheme == null || (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme))) {
             throw new Bank2SheetsException(
-                    "ENABLE_BANKING_REDIRECT_URL must use the http scheme (loopback callback): " + url);
+                    "ENABLE_BANKING_REDIRECT_URL must use the http or https scheme: " + url);
         }
         String host = uri.getHost();
-        if (!"127.0.0.1".equals(host) && !"localhost".equalsIgnoreCase(host)) {
+        if (host == null || host.isBlank()) {
             throw new Bank2SheetsException(
-                    "ENABLE_BANKING_REDIRECT_URL must point at 127.0.0.1 or localhost: " + url);
+                    "ENABLE_BANKING_REDIRECT_URL must have a non-blank host: " + url);
         }
-        int port = uri.getPort();
-        if (port < 1 || port > 65535) {
-            throw new Bank2SheetsException(
-                    "ENABLE_BANKING_REDIRECT_URL must carry an explicit port in 1..65535: " + url);
+        if ("http".equalsIgnoreCase(scheme)) {
+            if (!"127.0.0.1".equals(host) && !"localhost".equalsIgnoreCase(host)) {
+                throw new Bank2SheetsException(
+                        "ENABLE_BANKING_REDIRECT_URL must point at 127.0.0.1 or localhost: " + url);
+            }
+            int port = uri.getPort();
+            if (port < 1 || port > 65535) {
+                throw new Bank2SheetsException(
+                        "ENABLE_BANKING_REDIRECT_URL must carry an explicit port in 1..65535: " + url);
+            }
         }
         String path = uri.getPath();
         if (path == null || path.isBlank()) {

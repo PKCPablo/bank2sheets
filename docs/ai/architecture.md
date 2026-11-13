@@ -21,7 +21,7 @@ Sensitive and per-run values come exclusively from the environment; never commit
 
 - `ENABLE_BANKING_APP_ID` — Enable Banking application id (JWT `kid`) (secret)
 - `ENABLE_BANKING_PRIVATE_KEY_B64` — base64-encoded PKCS#8 PEM private key for the Enable Banking application (secret)
-- `ENABLE_BANKING_REDIRECT_URL` — registered loopback redirect URL, e.g. `http://127.0.0.1:8765/bank2sheets/callback` (`http` on `127.0.0.1`/`localhost`, explicit port, non-empty path)
+- `ENABLE_BANKING_REDIRECT_URL` — registered redirect URL: `http` loopback for sandbox (`127.0.0.1`/`localhost`, explicit port, non-empty path) or `https` for production (e.g. the GitHub Pages callback page; the CLI prompts for the pasted callback URL)
 - `ENABLE_BANKING_SESSION_ID` — active Enable Banking session id; optional once `connect` has run (persisted to the gitignored `bank2sheets-state.properties`)
 - `SALTEDGE_APP_ID` — Salt Edge **Service** API key id (`App-id` header) (secret) — legacy/fallback provider
 - `SALTEDGE_SECRET` — Salt Edge **Service** API key secret (`Secret` header) (secret) — legacy/fallback provider
@@ -31,7 +31,7 @@ Sensitive and per-run values come exclusively from the environment; never commit
 - `GOOGLE_SERVICE_ACCOUNT_B64` — Google service-account key JSON, base64-encoded (secret)
 - `GOOGLE_SPREADSHEET_ID` — target spreadsheet id
 
-Enable Banking contract: Open Banking Gateway API (`https://api.enablebanking.com`), RS256 JWT auth built from `ENABLE_BANKING_APP_ID` + the private key (`kid` = app id, TTL ≤ 1 h). Free restricted-production mode: personal, non-commercial use only, and only the accounts the owner links in the Enable Banking control panel are accessible; ASPSP rate limits apply and sessions need re-authorisation (fresh redirect/SCA) when they expire. `connect` binds a loopback HTTP listener on the redirect URL before printing the auth URL and captures the `code`/`state` callback locally. Transaction ids are prefixed `eb:` so they cannot collide with Salt Edge ids in the same sheet.
+Enable Banking contract: Open Banking Gateway API (`https://api.enablebanking.com`), RS256 JWT auth built from `ENABLE_BANKING_APP_ID` + the private key (`kid` = app id, TTL ≤ 1 h). Free restricted-production mode: personal, non-commercial use only, and only the accounts the owner links in the Enable Banking control panel are accessible; ASPSP rate limits apply and sessions need re-authorisation (fresh redirect/SCA) when they expire. `connect` uses an `http` loopback listener for sandbox redirects (bound before printing the auth URL) and a paste prompt for `https` production redirects (the `docs/callback.html` GitHub Pages page shows the `code`/`state`). Transaction ids are prefixed `eb:` so they cannot collide with Salt Edge ids in the same sheet.
 
 Salt Edge contract (fallback): **API V6** (`https://www.saltedge.com/api/v6`). Keys must be **Service API keys** from the Salt Edge dashboard (API Keys page, type Service); App API keys don't work in V6. The `App-id`/`Secret` headers and env var names are unchanged. AIS-only read consent with scopes `accounts` (covers accounts + balance) and `transactions`; PIS is never requested.
 

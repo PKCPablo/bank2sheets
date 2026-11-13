@@ -71,6 +71,13 @@ class ProviderSourcesTest {
     }
 
     @Test
+    void enableBankingAcceptsHttpsRedirectUrl() {
+        AppConfig cfg = new AppConfig("", "", "", "", "app-1", base64Pem(),
+                "https://pkcpablo.github.io/bank2sheets/callback.html", "", ENABLE_BANKING_ACCOUNTS);
+        assertInstanceOf(EnableBankingClient.class, ProviderSources.create(cfg));
+    }
+
+    @Test
     void unknownProviderFails() {
         AppConfig cfg = new AppConfig("", "", "", "", "", "", "", "",
                 List.of(new AccountConfig("powens", "x")));
