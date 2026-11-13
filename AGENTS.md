@@ -2,11 +2,11 @@
 
 ## Project overview
 
-bank2sheets is a personal Java 21 CLI that fetches BBVA transactions through the Salt Edge V6 Open Banking API and idempotently appends them to a Google Sheets spreadsheet. It runs on demand (`connect` / `fetch` / `sync`), keeps credentials out of the repository, and has no frontend or database. Start with `README.md` for usage and `docs/ai/README.md` for routed durable memory; most agent work touches `src/main/java/bank2sheets/` (Salt Edge client, Sheets client, config, CLI wiring) and its mirrored tests.
+bank2sheets is a personal Java 21 CLI that fetches BBVA transactions through Open Banking (Enable Banking restricted production is the primary provider per ADR-0005; Salt Edge V6 remains a selectable fallback) and idempotently appends them to a Google Sheets spreadsheet. It runs on demand (`connect` / `fetch` / `sync`), keeps credentials out of the repository, and has no frontend or database. Start with `README.md` for usage and `docs/ai/README.md` for routed durable memory; most agent work touches `src/main/java/bank2sheets/` (provider clients, Sheets client, config, CLI wiring) and its mirrored tests.
 
 ## Project structure
 
-- `src/main/java/bank2sheets/` — `Main` CLI plus `config/` (env config, runtime state), `http/` (HTTP seam), `model/` (`Account`, `Transaction`), `openbanking/` (`TransactionSource` + `saltedge/SaltEdgeClient`), `sheets/` (`GoogleSheetsClient`, `SheetRow`).
+- `src/main/java/bank2sheets/` — `Main` CLI plus `config/` (env config, runtime state), `http/` (HTTP seam + `Rs256Jwt`), `model/` (`Account`, `Transaction`), `openbanking/` (`TransactionSource`, `ProviderSources` factory, `saltedge/SaltEdgeClient`, `enablebanking/EnableBankingClient`), `sheets/` (`GoogleSheetsClient`, `SheetRow`).
 - `src/test/java/` — mirrors the main packages; fake HTTP backends plus unit and CLI tests.
 - `scripts/` — `mvn.ps1` (JDK 21 Maven wrapper) and `run.ps1` (loads the repo-root `.env`, resolves a JDK 21+ like `mvn.ps1`, runs the fat JAR); both share `jdk.ps1` (JDK 21+ discovery).
 - `docs/ai/` — routed AI memory: `README.md` router, `architecture.md`, `decisions/`, `plans/`, `backlog/`, `logs/`.
@@ -27,7 +27,7 @@ bank2sheets is a personal Java 21 CLI that fetches BBVA transactions through the
 
 ## Testing
 
-- Full suite: `.\scripts\mvn.ps1 test` — 44 JUnit 5 tests, JaCoCo report at `target/site/jacoco/index.html`, and an 80% line-coverage gate that fails the build below 80%.
+- Full suite: `.\scripts\mvn.ps1 test` — 97 JUnit 5 tests, JaCoCo report at `target/site/jacoco/index.html`, and an 80% line-coverage gate that fails the build below 80%.
 - Single test: `.\scripts\mvn.ps1 test '-Dtest=SaltEdgeClientTest'` or `'-Dtest=SaltEdgeClientTest#methodName'` (Maven Surefire).
 - No lint or typecheck command is configured; `.editorconfig` is the only style enforcement.
 
@@ -46,7 +46,7 @@ bank2sheets is a personal Java 21 CLI that fetches BBVA transactions through the
 
 ## Boundaries
 
-- Never commit `.env`, credentials, service-account keys, or `bank2sheets-state.properties` (it holds the Salt Edge connection id).
+- Never commit `.env`, credentials, service-account keys, or `bank2sheets-state.properties` (it holds the provider connection/session ids: `saltedge.connection_id` and `enablebanking.session_id`).
 - Do not add runtime dependencies beyond Gson without asking; no frontend, database, or formal architecture layer.
 - Do not assume scheduled CI/cron exists; execution is on-demand local and cron is deferred in `docs/ai/backlog/README.md`.
 - Keep changes within the requested scope; record durable decisions in `docs/ai/` via the planner.

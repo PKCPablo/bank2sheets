@@ -161,7 +161,7 @@ Preconditions / owner actions (pending): create the Enable Banking account and p
 
 Invariants preserved: the `TransactionSource` seam, AIS-only read consent, no new runtime dependency without owner approval, and test-spreadsheet isolation.
 
-Follow-up: a separate implementation plan will cover the Enable Banking adapter, the provider-selection factory keyed by `BANK2SHEETS_ACCOUNTS`, the Enable Banking env/state contract, and fake-HTTP tests. That plan is **pending creation by the planner**; once created it must be linked from this ADR and from GitHub issue #3 (neither link exists yet).
+Follow-up: implemented by `plans/2026-11-13_171738-enable-banking-adapter.md` (Tasks 1-2 shipped: `EnableBankingClient`, `ProviderSources` factory, env/state contract, fake-HTTP tests; sandbox `connect`/`fetch`/`sync`-twice validated 2026-11-13; production real-BBVA validation pending); tracked in GitHub issue #3.
 
 ## Risks (accepted)
 
@@ -184,8 +184,8 @@ Follow-up: a separate implementation plan will cover the Enable Banking adapter,
 ## Consequences
 
 - The decision is recorded: Enable Banking restricted production is the target provider; real BBVA access is conditionally unblocked: it is not verified until the owner completes the Enable Banking setup, links their BBVA account(s), and confirms the connect/SCA flow and transaction retrieval.
-- The current code still wires Salt Edge; it stays in place until the Enable Banking adapter lands.
-- Env/state/factory changes are deferred to the follow-up implementation plan; this decision adds no dependency.
+- The Enable Banking adapter and provider factory have landed (`plans/2026-11-13_171738-enable-banking-adapter.md`); Salt Edge remains selectable as a fallback.
+- The provider env/state/factory changes are implemented in the follow-up plan; this decision added no dependency.
 - Outcome A (Salt Edge enablement) was not chosen: no support ticket was sent, no Test upgrade was requested, and no Live contract will be signed.
 - Outcome C (still blocked) did not apply: a viable free path exists via Enable Banking.
 - Salt Edge's free Test tier (90 days, real data) remains a fallback only if the Enable Banking path fails.

@@ -6,8 +6,8 @@ import bank2sheets.config.RuntimeState;
 import bank2sheets.config.SheetsConfig;
 import bank2sheets.model.Account;
 import bank2sheets.model.Transaction;
+import bank2sheets.openbanking.ProviderSources;
 import bank2sheets.openbanking.TransactionSource;
-import bank2sheets.openbanking.saltedge.SaltEdgeClient;
 import bank2sheets.sheets.GoogleSheetsClient;
 import bank2sheets.sheets.SheetRow;
 import com.google.gson.JsonObject;
@@ -26,8 +26,8 @@ import java.util.function.Supplier;
  *
  * <p>Dispatch plus the {@code connect}/{@code fetch}/{@code sync} commands live
  * here. Credentials are read from the environment at runtime, never stored in
- * the repository. Only the Salt Edge connection id is persisted, in a gitignored
- * runtime state file.
+ * the repository. Only the provider connection/session id is persisted (Salt Edge
+ * connection id or Enable Banking session id), in a gitignored runtime state file.
  */
 public final class Main {
 
@@ -42,10 +42,17 @@ public final class Main {
               sync      Fetch transactions and sync new ones to Google Sheets (idempotent)
               help      Show this help
 
-            Configuration is read from environment variables at runtime:
+            Configuration is read from environment variables at runtime.
+            Enable Banking (default provider):
+              ENABLE_BANKING_APP_ID, ENABLE_BANKING_PRIVATE_KEY_B64, ENABLE_BANKING_REDIRECT_URL
+              ENABLE_BANKING_SESSION_ID (optional once `connect` has run)
+            Salt Edge (selectable fallback):
               SALTEDGE_APP_ID, SALTEDGE_SECRET, SALTEDGE_CUSTOMER_ID
               SALTEDGE_CONNECTION_ID (optional once `connect` has run)
-              BANK2SHEETS_ACCOUNTS  comma-separated provider:accountId entries (e.g. saltedge:ACCT_ID)
+            Shared:
+              BANK2SHEETS_ACCOUNTS  comma-separated provider:accountId entries
+                                    (e.g. enablebanking:<uuid> or saltedge:ACCT_ID);
+                                    all entries must use one provider
               GOOGLE_SERVICE_ACCOUNT_B64, GOOGLE_SPREADSHEET_ID (required for `sync`)
             """;
 
@@ -80,7 +87,7 @@ public final class Main {
      * Split from {@link #main(String[])} so tests exercise it without System.exit.
      */
     public static int run(String[] args) {
-        return new Main(SaltEdgeClient::create, AppConfig::fromEnv,
+        return new Main(ProviderSources::create, AppConfig::fromEnv,
                 () -> GoogleSheetsClient.create(SheetsConfig.fromEnv()), Path.of(STATE_FILE),
                 Main::interactiveWait)
                 .dispatch(args);
@@ -112,11 +119,8 @@ public final class Main {
     /** One-time AIS consent: print the authorization URL, then persist the active connection id. */
     private int connect() {
         AppConfig cfg = config.get();
-        if (cfg.saltEdgeAppId().isBlank() || cfg.saltEdgeSecret().isBlank()) {
-            System.err.println("connect: SALTEDGE_APP_ID and SALTEDGE_SECRET must be set in the environment");
-            return 1;
-        }
         try {
+            String provider = cfg.provider();
             TransactionSource source = sources.apply(cfg);
             String connectUrl = source.connect();
             System.out.println("Open this URL in your browser and authorize BBVA (read-only consent):");
@@ -130,8 +134,18 @@ public final class Main {
                         + "complete the authorization and run `connect` again");
                 return 1;
             }
-            state.saveConnectionId(connectionId);
+            state.save(provider, connectionId);
             System.out.println("Connected. Connection id " + connectionId + " saved to " + state.file());
+            try {
+                TransactionSource connected = sources.apply(cfg.withProviderState(provider, connectionId));
+                System.out.println("Available accounts:");
+                for (Account account : connected.listAccounts()) {
+                    System.out.println("  " + account.id() + (account.name().isBlank() ? "" : " (" + account.name() + ")"));
+                }
+                System.out.println("Set BANK2SHEETS_ACCOUNTS=" + provider + ":<accountId> for `fetch`/`sync`.");
+            } catch (Bank2SheetsException | IllegalStateException e) {
+                System.err.println("connect: could not list accounts: " + e.getMessage());
+            }
             return 0;
         } catch (Bank2SheetsException | IllegalStateException e) {
             System.err.println("connect: " + e.getMessage());
@@ -167,33 +181,33 @@ public final class Main {
         }
     }
 
-    /** Prefers the env connection id; falls back to the connection persisted by {@code connect}. */
-    private AppConfig withConnectionId(AppConfig cfg) {
-        if (!cfg.saltEdgeConnectionId().isBlank()) {
+    /** Prefers the env id; falls back to the provider id persisted by {@code connect}. */
+    private AppConfig withProviderState(AppConfig cfg) {
+        String provider = cfg.provider();
+        if (!cfg.providerId().isBlank()) {
             return cfg;
         }
-        String stored = state.connectionId();
-        return stored == null ? cfg : cfg.withConnectionId(stored);
+        String stored = state.read(provider);
+        return stored == null ? cfg : cfg.withProviderState(provider, stored);
     }
 
     /**
-     * Guards shared by {@code fetch} and {@code sync}: credentials, connection,
-     * and accounts must be configured. Prints the command-prefixed error and
-     * returns {@code null} when a guard fails.
+     * Guards shared by {@code fetch} and {@code sync}: accounts, provider state,
+     * and provider credentials must be configured. Prints the command-prefixed
+     * error and returns {@code null} when a guard fails.
      */
     private AppConfig requireFetchConfig(String command) {
         AppConfig cfg = config.get();
-        if (cfg.saltEdgeAppId().isBlank() || cfg.saltEdgeSecret().isBlank()) {
-            System.err.println(command + ": SALTEDGE_APP_ID and SALTEDGE_SECRET must be set in the environment");
+        if (cfg.accounts().isEmpty()) {
+            System.err.println(command + ": no accounts configured; set BANK2SHEETS_ACCOUNTS "
+                    + "(e.g. enablebanking:<uuid> or saltedge:ACCT_ID)");
             return null;
         }
-        AppConfig resolved = withConnectionId(cfg);
-        if (resolved.saltEdgeConnectionId().isBlank()) {
-            System.err.println(command + ": no connection; run `connect` once or set SALTEDGE_CONNECTION_ID");
-            return null;
-        }
-        if (resolved.accounts().isEmpty()) {
-            System.err.println(command + ": no accounts configured; set BANK2SHEETS_ACCOUNTS (e.g. saltedge:ACCT_ID)");
+        AppConfig resolved = withProviderState(cfg);
+        if (resolved.providerId().isBlank()) {
+            String hint = "enablebanking".equals(resolved.provider())
+                    ? "ENABLE_BANKING_SESSION_ID" : "SALTEDGE_CONNECTION_ID";
+            System.err.println(command + ": no connection; run `connect` once or set " + hint);
             return null;
         }
         return resolved;
