@@ -9,7 +9,7 @@ bank2sheets is a personal Java 21 command-line job that uses Open Banking to fet
 
 ## Build
 
-Use the Maven wrapper, which auto-detects a JDK 21+: it keeps an active JDK 21+ `JAVA_HOME` and otherwise selects the highest `jdk-21*` under `C:\Program Files\Java` (the default `JAVA_HOME` on this machine points to JDK 8, which cannot compile with `maven.compiler.release=21`):
+Use the Maven wrapper, which auto-detects a JDK 21+: it keeps an active JDK 21+ `JAVA_HOME` and otherwise selects a `jdk-21*` installation under `C:\Program Files\Java` (the default `JAVA_HOME` on this machine points to JDK 8, which cannot compile with `maven.compiler.release=21`):
 
 ```powershell
 .\scripts\mvn.ps1 test
@@ -27,7 +27,7 @@ $env:JAVA_HOME='C:\Program Files\Java\jdk-21'; mvn package
 
 ## Run
 
-Run from the repository root so the runtime state file lands next to `.gitignore`. Use the local runner, which loads `.env` (KEY=VALUE, never printed) when present, resolves a JDK 21+ (it keeps an active JDK 21+ `JAVA_HOME`, otherwise selects the highest `jdk-21*` under `C:\Program Files\Java`), and runs the fat JAR with it:
+Run from the repository root so the runtime state file lands next to `.gitignore`. Use the local runner, which loads `.env` (KEY=VALUE, never printed) when present, resolves a JDK 21+ (it keeps an active JDK 21+ `JAVA_HOME`, otherwise selects a `jdk-21*` installation under `C:\Program Files\Java`), and runs the fat JAR with it:
 
 ```powershell
 .\scripts\run.ps1 help

@@ -1,5 +1,7 @@
 package bank2sheets.openbanking.enablebanking;
 
+import bank2sheets.Bank2SheetsException;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -30,11 +32,11 @@ public final class PasteAuthorizationCodeReceiver implements AuthorizationCodeRe
         System.out.println("Paste the full callback URL from the browser:");
         String line = lineSupplier.get();
         if (line == null) {
-            throw new EnableBankingException("No callback URL was pasted (input stream closed)");
+            throw new Bank2SheetsException("No callback URL was pasted (input stream closed)");
         }
         String url = line.trim();
         if (url.isBlank()) {
-            throw new EnableBankingException("Pasted callback URL is blank; copy the full URL from the browser");
+            throw new Bank2SheetsException("Pasted callback URL is blank; copy the full URL from the browser");
         }
         return url;
     }
@@ -49,7 +51,7 @@ public final class PasteAuthorizationCodeReceiver implements AuthorizationCodeRe
             try {
                 return reader.readLine();
             } catch (java.io.IOException e) {
-                throw new EnableBankingException("Failed to read the pasted callback URL", e);
+                throw new Bank2SheetsException("Failed to read the pasted callback URL", e);
             }
         };
     }

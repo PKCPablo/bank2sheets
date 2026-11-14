@@ -1,5 +1,7 @@
 package bank2sheets.openbanking.enablebanking;
 
+import bank2sheets.Bank2SheetsException;
+
 import bank2sheets.config.EnableBankingConfig;
 import bank2sheets.http.HttpExchange;
 import bank2sheets.http.HttpExchange.Response;
@@ -19,6 +21,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -106,17 +109,17 @@ public final class EnableBankingClient implements TransactionSource {
     @Override
     public String findConnectionId() {
         if (pendingState == null) {
-            throw new EnableBankingException("No authorization in progress; call connect() first");
+            throw new Bank2SheetsException("No authorization in progress; call connect() first");
         }
         String callbackUrl = receiver.awaitCallbackUrl();
         String state = queryParam(callbackUrl, "state");
         if (!pendingState.equals(state)) {
-            throw new EnableBankingException("Authorization state mismatch: expected " + pendingState
+            throw new Bank2SheetsException("Authorization state mismatch: expected " + pendingState
                     + " but callback carried " + state);
         }
         String code = queryParam(callbackUrl, "code");
         if (code.isBlank()) {
-            throw new EnableBankingException("Authorization callback carries no code: " + callbackUrl);
+            throw new Bank2SheetsException("Authorization callback carries no code: " + callbackUrl);
         }
         JsonObject body = new JsonObject();
         body.addProperty("code", code);
@@ -132,7 +135,7 @@ public final class EnableBankingClient implements TransactionSource {
             return false;
         }
         if (!response.ok()) {
-            throw new EnableBankingException("Enable Banking request failed (HTTP " + response.status()
+            throw new Bank2SheetsException("Enable Banking request failed (HTTP " + response.status()
                     + "): GET /sessions/" + sessionId + " -> " + response.body());
         }
         return "AUTHORIZED".equals(stringOrEmpty(parse(response.body()), "status"));
@@ -141,11 +144,11 @@ public final class EnableBankingClient implements TransactionSource {
     @Override
     public List<Account> listAccounts() {
         if (configSessionId().isBlank()) {
-            throw new EnableBankingException("ENABLE_BANKING_SESSION_ID is required to list accounts");
+            throw new Bank2SheetsException("ENABLE_BANKING_SESSION_ID is required to list accounts");
         }
         JsonObject session = request("GET", "/sessions/" + configSessionId(), null);
         if (!session.has("accounts") || !session.get("accounts").isJsonArray()) {
-            throw new EnableBankingException(
+            throw new Bank2SheetsException(
                     "Enable Banking session response carries no accounts array: " + session);
         }
         // Name fallback: uid -> product from accounts_data, before the empty fallback.
@@ -244,7 +247,7 @@ public final class EnableBankingClient implements TransactionSource {
                 return date.substring(0, 10);
             }
         }
-        throw new EnableBankingException("Enable Banking transaction carries no "
+        throw new Bank2SheetsException("Enable Banking transaction carries no "
                 + "booking_date/value_date/transaction_date: " + t);
     }
 
@@ -301,7 +304,7 @@ public final class EnableBankingClient implements TransactionSource {
             JsonObject details = request("GET", "/accounts/" + uuid + "/details", null);
             String name = stringOrEmpty(details, "name");
             return name.isBlank() ? fallback : name;
-        } catch (EnableBankingException e) {
+        } catch (Bank2SheetsException e) {
             return fallback;
         }
     }
@@ -316,13 +319,13 @@ public final class EnableBankingClient implements TransactionSource {
                 return aspsp;
             }
         }
-        throw new EnableBankingException("Enable Banking lists no " + ASPSP_NAME + " ASPSP in "
+        throw new Bank2SheetsException("Enable Banking lists no " + ASPSP_NAME + " ASPSP in "
                 + ASPSP_COUNTRY + " for " + PSU_TYPE + " AIS");
     }
 
     private String configSessionId() {
         if (sessionId == null || sessionId.isBlank()) {
-            throw new EnableBankingException("No Enable Banking session id available; complete the "
+            throw new Bank2SheetsException("No Enable Banking session id available; complete the "
                     + "connect flow first (Task 2 wires the persisted session id)");
         }
         return sessionId;
@@ -342,7 +345,7 @@ public final class EnableBankingClient implements TransactionSource {
     private JsonObject request(String method, String pathAndQuery, String body) {
         Response response = exchange(method, pathAndQuery, body);
         if (!response.ok()) {
-            throw new EnableBankingException("Enable Banking request failed (HTTP " + response.status()
+            throw new Bank2SheetsException("Enable Banking request failed (HTTP " + response.status()
                     + "): " + method + " " + pathAndQuery + " -> " + response.body());
         }
         return parse(response.body());
@@ -382,7 +385,7 @@ public final class EnableBankingClient implements TransactionSource {
             return new String(java.util.Base64.getDecoder().decode(config.privateKeyB64()),
                     StandardCharsets.UTF_8);
         } catch (IllegalArgumentException e) {
-            throw new EnableBankingException(
+            throw new Bank2SheetsException(
                     "ENABLE_BANKING_PRIVATE_KEY_B64 is not valid base64 (expected base64 PKCS#8 PEM)", e);
         }
     }
@@ -412,15 +415,11 @@ public final class EnableBankingClient implements TransactionSource {
 
     private static String sha256Hex(String input) {
         try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder();
-            for (byte b : digest) {
-                hex.append("%02x".formatted(b));
-            }
-            return hex.toString();
+            return HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256")
+                            .digest(input.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException e) {
-            throw new EnableBankingException("SHA-256 unavailable", e);
+            throw new Bank2SheetsException("SHA-256 unavailable", e);
         }
     }
 }

@@ -13,19 +13,14 @@ import bank2sheets.openbanking.enablebanking.AuthorizationCodeReceiver;
 import bank2sheets.openbanking.enablebanking.EnableBankingClient;
 import bank2sheets.openbanking.saltedge.FakeHttp;
 import bank2sheets.openbanking.saltedge.SaltEdgeClient;
-import bank2sheets.sheets.FakeSheetsHttp;
 import bank2sheets.sheets.GoogleSheetsClient;
 import bank2sheets.sheets.SheetsTestSupport;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonParser;
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.util.Base64;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -36,6 +31,20 @@ import org.junit.jupiter.api.io.TempDir;
  * calls.
  */
 class MainCommandsTest {
+
+    /** Two-transaction Salt Edge payload shared by the fetch and sync end-to-end tests. */
+    private static final String TWO_TRANSACTIONS_JSON = """
+            {"data": [
+              {"id": "t1", "description": "Nomina", "amount": 1200.50, "currency_code": "EUR",
+               "made_on": "2026-08-01T10:30:00Z"},
+              {"id": "t2", "description": "Cafe", "amount": "-3.20", "currency_code": "EUR",
+               "made_on": "2026-08-02"}
+            ]}
+            """;
+
+    /** Header row stub body shared by the sync tests. */
+    private static final String HEADER_JSON =
+            "{\"values\":[[\"Fecha\",\"Descripción\",\"Importe\",\"Moneda\",\"TransactionId\"]]}";
 
     @TempDir
     Path tempDir;
@@ -95,17 +104,7 @@ class MainCommandsTest {
                 """
                 {"data": [{"id": "acct-1", "name": "Cuenta BBVA"}]}
                 """);
-        http.stub("/transactions?connection_id=conn-1&account_id=acct-1",
-                // ponytail: the repeated transaction JSON payloads across these tests
-                // could be a shared fixture constant.
-                """
-                {"data": [
-                  {"id": "t1", "description": "Nomina", "amount": 1200.50, "currency_code": "EUR",
-                   "made_on": "2026-08-01T10:30:00Z"},
-                  {"id": "t2", "description": "Cafe", "amount": "-3.20", "currency_code": "EUR",
-                   "made_on": "2026-08-02"}
-                ]}
-                """);
+        http.stub("/transactions?connection_id=conn-1&account_id=acct-1", TWO_TRANSACTIONS_JSON);
         Path stateFile = tempDir.resolve("state.properties");
         Files.writeString(stateFile, "saltedge.connection_id=conn-1\n");
 
@@ -159,7 +158,7 @@ class MainCommandsTest {
                         "SALTEDGE_APP_ID and SALTEDGE_SECRET must be set in the environment");
             }
             return new SaltEdgeClient(c, http);
-        }, () -> noCredentials, () -> new GoogleSheetsClient(SheetsTestSupport.config(), new FakeSheetsHttp()),
+        }, () -> noCredentials, () -> new GoogleSheetsClient(SheetsTestSupport.config(), SheetsTestSupport.fakeHttp()),
                 stateFile, () -> { })
                 .dispatch(new String[] {"connect"}));
 
@@ -170,21 +169,10 @@ class MainCommandsTest {
     @Test
     void syncEndToEndAppendsOnlyNewTransactions() throws IOException {
         FakeHttp http = new FakeHttp();
-        http.stub("/transactions?connection_id=conn-1&account_id=acct-1",
-                """
-                {"data": [
-                  {"id": "t1", "description": "Nomina", "amount": 1200.50, "currency_code": "EUR",
-                   "made_on": "2026-08-01T10:30:00Z"},
-                  {"id": "t2", "description": "Cafe", "amount": "-3.20", "currency_code": "EUR",
-                   "made_on": "2026-08-02"}
-                ]}
-                """);
-        FakeSheetsHttp sheets = new FakeSheetsHttp();
-        SheetsTestSupport.stubToken(sheets);
+        http.stub("/transactions?connection_id=conn-1&account_id=acct-1", TWO_TRANSACTIONS_JSON);
+        FakeHttp sheets = SheetsTestSupport.fakeHttp();
+        stubReadySheet(sheets);
         sheets.stub("/sheet-1/values/E2:E", "{\"values\":[[\"t1\"]]}");
-        sheets.stub("/sheet-1/values/A1:E1",
-                "{\"values\":[[\"Fecha\",\"Descripción\",\"Importe\",\"Moneda\",\"TransactionId\"]]}");
-        sheets.stub("/sheet-1/values/A1:E:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
         Path stateFile = tempDir.resolve("state.properties");
         Files.writeString(stateFile, "saltedge.connection_id=conn-1\n");
 
@@ -193,7 +181,7 @@ class MainCommandsTest {
         assertEquals(0, result.exitCode());
         assertTrue(result.stdout().contains(
                 "sync: fetched 2 transaction(s), appended 1 new row(s), skipped 1 duplicate(s)"));
-        List<FakeHttp.Request> appends = sheets.requests().stream()
+        List<FakeHttp.Request> appends = sheets.requests.stream()
                 .filter(r -> "POST".equals(r.method()) && r.url().endsWith(":append?valueInputOption=RAW"))
                 .toList();
         assertEquals(1, appends.size());
@@ -212,21 +200,10 @@ class MainCommandsTest {
     @Test
     void syncIsIdempotentWhenAllTransactionsAreAlreadyPresent() throws IOException {
         FakeHttp http = new FakeHttp();
-        http.stub("/transactions?connection_id=conn-1&account_id=acct-1",
-                """
-                {"data": [
-                  {"id": "t1", "description": "Nomina", "amount": 1200.50, "currency_code": "EUR",
-                   "made_on": "2026-08-01T10:30:00Z"},
-                  {"id": "t2", "description": "Cafe", "amount": "-3.20", "currency_code": "EUR",
-                   "made_on": "2026-08-02"}
-                ]}
-                """);
-        FakeSheetsHttp sheets = new FakeSheetsHttp();
-        SheetsTestSupport.stubToken(sheets);
+        http.stub("/transactions?connection_id=conn-1&account_id=acct-1", TWO_TRANSACTIONS_JSON);
+        FakeHttp sheets = SheetsTestSupport.fakeHttp();
+        stubReadySheet(sheets);
         sheets.stub("/sheet-1/values/E2:E", "{\"values\":[[\"t1\"],[\"t2\"]]}");
-        sheets.stub("/sheet-1/values/A1:E1",
-                "{\"values\":[[\"Fecha\",\"Descripción\",\"Importe\",\"Moneda\",\"TransactionId\"]]}");
-        sheets.stub("/sheet-1/values/A1:E:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
         Path stateFile = tempDir.resolve("state.properties");
         Files.writeString(stateFile, "saltedge.connection_id=conn-1\n");
 
@@ -235,7 +212,7 @@ class MainCommandsTest {
         assertEquals(0, result.exitCode());
         assertTrue(result.stdout().contains(
                 "sync: fetched 2 transaction(s), appended 0 new row(s), skipped 2 duplicate(s)"));
-        assertTrue(sheets.requests().stream()
+        assertTrue(sheets.requests.stream()
                 .noneMatch(r -> "POST".equals(r.method()) && r.url().endsWith(":append")));
     }
 
@@ -255,7 +232,7 @@ class MainCommandsTest {
     @Test
     void syncWithSaltEdgeErrorExitsNonZero() throws IOException {
         FakeHttp http = new FakeHttp();
-        FakeSheetsHttp sheets = new FakeSheetsHttp();
+        FakeHttp sheets = SheetsTestSupport.fakeHttp();
         SheetsTestSupport.stubToken(sheets);
         sheets.stub("/sheet-1/values/E2:E", "{}");
         Path stateFile = tempDir.resolve("state.properties");
@@ -275,7 +252,7 @@ class MainCommandsTest {
                 {"data": [{"id": "t1", "description": "Nomina", "amount": 1200.50, "currency_code": "EUR",
                    "made_on": "2026-08-01T10:30:00Z"}]}
                 """);
-        FakeSheetsHttp sheets = new FakeSheetsHttp();
+        FakeHttp sheets = SheetsTestSupport.fakeHttp();
         SheetsTestSupport.stubToken(sheets);
         sheets.stub("/sheet-1/values/E2:E", 403, "{\"error\":{\"message\":\"permission denied\"}}");
         Path stateFile = tempDir.resolve("state.properties");
@@ -301,6 +278,13 @@ class MainCommandsTest {
     private static AppConfig config(String connectionId) {
         return new AppConfig("app-1", "secret-1", "cust-1", connectionId,
                 List.of(new AccountConfig("saltedge", "acct-1")));
+    }
+
+    /** Stubs a Sheets backend with a valid token, the header row, and a successful append. */
+    private static void stubReadySheet(FakeHttp sheets) {
+        SheetsTestSupport.stubToken(sheets);
+        sheets.stub("/sheet-1/values/A1:E1", HEADER_JSON);
+        sheets.stub("/sheet-1/values/A1:E:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
     }
 
     // ---- Enable Banking command tests ----
@@ -338,7 +322,7 @@ class MainCommandsTest {
         http.stub("/accounts/uuid-1/details", "{\"name\": \"Cuenta Nominas\"}");
         Path stateFile = tempDir.resolve("state.properties");
         AppConfig noAccounts = new AppConfig("", "", "", "",
-                "app-1", base64Pem(), "http://127.0.0.1:8765/bank2sheets/callback", "", List.of());
+                "app-1", TestKeys.base64Pem(), "http://127.0.0.1:8765/bank2sheets/callback", "", List.of());
 
         Result result = runEnableBanking(http, stateFile, noAccounts, "connect");
 
@@ -388,12 +372,9 @@ class MainCommandsTest {
                    "booking_date": "2026-08-01"}
                 ]}
                 """);
-        FakeSheetsHttp sheets = new FakeSheetsHttp();
-        SheetsTestSupport.stubToken(sheets);
+        FakeHttp sheets = SheetsTestSupport.fakeHttp();
+        stubReadySheet(sheets);
         sheets.stub("/sheet-1/values/E2:E", "{}");
-        sheets.stub("/sheet-1/values/A1:E1",
-                "{\"values\":[[\"Fecha\",\"Descripción\",\"Importe\",\"Moneda\",\"TransactionId\"]]}");
-        sheets.stub("/sheet-1/values/A1:E:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
         Path stateFile = tempDir.resolve("state.properties");
         Files.writeString(stateFile, "enablebanking.session_id=sess-eb-1\n");
         AppConfig cfg = enableBankingConfig("sess-eb-1");
@@ -405,7 +386,7 @@ class MainCommandsTest {
         assertTrue(first.stdout().contains("appended 1 new row(s)"));
 
         // Mark the appended TransactionId as already present, then sync again.
-        String appendBody = sheets.requests().stream()
+        String appendBody = sheets.requests.stream()
                 .filter(r -> "POST".equals(r.method()) && r.url().endsWith(":append?valueInputOption=RAW"))
                 .findFirst().orElseThrow().body();
         String transactionId = JsonParser.parseString(appendBody).getAsJsonObject()
@@ -458,15 +439,15 @@ class MainCommandsTest {
     /** Enable Banking config with valid credentials and the given session id (blank = unset). */
     private static AppConfig enableBankingConfig(String sessionId) {
         return new AppConfig("", "", "", "",
-                "app-1", base64Pem(), "http://127.0.0.1:8765/bank2sheets/callback", sessionId,
+                "app-1", TestKeys.base64Pem(), "http://127.0.0.1:8765/bank2sheets/callback", sessionId,
                 List.of(new AccountConfig("enablebanking", "uuid-1")));
     }
 
     private static Result runEnableBanking(FakeHttp http, Path stateFile, AppConfig config, String... args) {
-        return runEnableBanking(http, new FakeSheetsHttp(), stateFile, config, args);
+        return runEnableBanking(http, SheetsTestSupport.fakeHttp(), stateFile, config, args);
     }
 
-    private static Result runEnableBanking(FakeHttp http, FakeSheetsHttp sheets, Path stateFile,
+    private static Result runEnableBanking(FakeHttp http, FakeHttp sheets, Path stateFile,
             AppConfig config, String... args) {
         return CliTestSupport.capture(() -> new Main(c -> enableBankingClient(c, http), () -> config,
                 () -> new GoogleSheetsClient(SheetsTestSupport.config(), sheets), stateFile, () -> { })
@@ -493,27 +474,11 @@ class MainCommandsTest {
         };
     }
 
-    /** Generates a throwaway RSA key pair and returns its base64 PKCS#8 PEM. */
-    private static String base64Pem() {
-        try {
-            KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
-            generator.initialize(2048);
-            KeyPair keys = generator.generateKeyPair();
-            String pem = "-----BEGIN PRIVATE KEY-----\n"
-                    + Base64.getMimeEncoder(64, "\n".getBytes(StandardCharsets.UTF_8))
-                            .encodeToString(keys.getPrivate().getEncoded())
-                    + "\n-----END PRIVATE KEY-----";
-            return Base64.getEncoder().encodeToString(pem.getBytes(StandardCharsets.UTF_8));
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
     private static Result runCli(FakeHttp http, Path stateFile, AppConfig config, String... args) {
-        return runCli(http, new FakeSheetsHttp(), stateFile, config, args);
+        return runCli(http, SheetsTestSupport.fakeHttp(), stateFile, config, args);
     }
 
-    private static Result runCli(FakeHttp http, FakeSheetsHttp sheets, Path stateFile, AppConfig config,
+    private static Result runCli(FakeHttp http, FakeHttp sheets, Path stateFile, AppConfig config,
             String... args) {
         return CliTestSupport.capture(() -> new Main(c -> new SaltEdgeClient(c, http), () -> config,
                 () -> new GoogleSheetsClient(SheetsTestSupport.config(), sheets), stateFile, () -> { })

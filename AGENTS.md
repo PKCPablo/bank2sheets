@@ -15,7 +15,7 @@ bank2sheets is a personal Java 21 CLI that fetches BBVA transactions through Ope
 ## Setup & build
 
 - Prerequisites: Java 21 (JDK) and Maven 3.9.9.
-- `scripts/mvn.ps1` auto-detects a JDK 21+: it keeps an active JDK 21+ `JAVA_HOME` and otherwise selects the highest `jdk-21*` under `C:\Program Files\Java` (here Temurin 21.0.12 at `C:\Program Files\Java\jdk-21`). Build with:
+- `scripts/mvn.ps1` auto-detects a JDK 21+: it keeps an active JDK 21+ `JAVA_HOME` and otherwise selects a `jdk-21*` installation under `C:\Program Files\Java` (here Temurin 21.0.12 at `C:\Program Files\Java\jdk-21`). Build with:
 
   ```powershell
   .\scripts\mvn.ps1 test

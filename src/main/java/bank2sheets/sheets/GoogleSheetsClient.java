@@ -1,5 +1,7 @@
 package bank2sheets.sheets;
 
+import bank2sheets.Bank2SheetsException;
+
 import bank2sheets.config.SheetsConfig;
 import bank2sheets.http.HttpExchange;
 import bank2sheets.http.HttpExchange.Response;
@@ -44,6 +46,7 @@ public final class GoogleSheetsClient {
     private static final String HEADER_RANGE = "A1:E1";
     private static final String IDS_RANGE = "E2:E";
     private static final String VALUE_INPUT_OPTION = "RAW";
+    /** Header row; order must match {@link SheetRow#values()} (columns A..E). */
     private static final List<Object> HEADER_VALUES =
             List.<Object>of("Fecha", "Descripción", "Importe", "Moneda", "TransactionId");
     private static final Gson GSON = new Gson();
@@ -60,10 +63,10 @@ public final class GoogleSheetsClient {
     /** Builds a client backed by the shared {@link RealHttpExchange}; fails fast when env config is missing. */
     public static GoogleSheetsClient create(SheetsConfig config) {
         if (config.serviceAccountB64().isBlank()) {
-            throw new SheetsException("GOOGLE_SERVICE_ACCOUNT_B64 must be set (base64 service account JSON)");
+            throw new Bank2SheetsException("GOOGLE_SERVICE_ACCOUNT_B64 must be set (base64 service account JSON)");
         }
         if (config.spreadsheetId().isBlank()) {
-            throw new SheetsException("GOOGLE_SPREADSHEET_ID must be set (target spreadsheet id)");
+            throw new Bank2SheetsException("GOOGLE_SPREADSHEET_ID must be set (target spreadsheet id)");
         }
         return new GoogleSheetsClient(config, new RealHttpExchange());
     }
@@ -117,7 +120,7 @@ public final class GoogleSheetsClient {
         }
         JsonArray firstRow = values.get(0).getAsJsonArray();
         return !firstRow.isEmpty() && !firstRow.get(0).isJsonNull()
-                && "Fecha".equals(firstRow.get(0).getAsString());
+                && HEADER_VALUES.get(0).equals(firstRow.get(0).getAsString());
     }
 
     /**
@@ -133,7 +136,7 @@ public final class GoogleSheetsClient {
         JsonElement email = serviceAccount.get("client_email");
         JsonElement privateKey = serviceAccount.get("private_key");
         if (email == null || email.isJsonNull() || privateKey == null || privateKey.isJsonNull()) {
-            throw new SheetsException("GOOGLE_SERVICE_ACCOUNT_B64 is not a service account JSON "
+            throw new Bank2SheetsException("GOOGLE_SERVICE_ACCOUNT_B64 is not a service account JSON "
                     + "(missing client_email/private_key)");
         }
         String tokenUri = serviceAccount.has("token_uri") && !serviceAccount.get("token_uri").isJsonNull()
@@ -157,12 +160,12 @@ public final class GoogleSheetsClient {
         Response response = http.exchange("POST", tokenUri,
                 Map.of("Content-Type", "application/x-www-form-urlencoded"), form);
         if (!response.ok()) {
-            throw new SheetsException("Google token request failed (HTTP " + response.status() + "): "
+            throw new Bank2SheetsException("Google token request failed (HTTP " + response.status() + "): "
                     + response.body());
         }
         JsonObject result = JsonParser.parseString(response.body()).getAsJsonObject();
         if (!result.has("access_token")) {
-            throw new SheetsException("Google token request returned no access_token: " + response.body());
+            throw new Bank2SheetsException("Google token request returned no access_token: " + response.body());
         }
         accessToken = result.get("access_token").getAsString();
         return accessToken;
@@ -173,12 +176,12 @@ public final class GoogleSheetsClient {
         try {
             json = new String(Base64.getDecoder().decode(config.serviceAccountB64()), StandardCharsets.UTF_8);
         } catch (IllegalArgumentException e) {
-            throw new SheetsException("GOOGLE_SERVICE_ACCOUNT_B64 is not valid base64", e);
+            throw new Bank2SheetsException("GOOGLE_SERVICE_ACCOUNT_B64 is not valid base64", e);
         }
         try {
             return JsonParser.parseString(json).getAsJsonObject();
         } catch (IllegalStateException | JsonSyntaxException e) {
-            throw new SheetsException("GOOGLE_SERVICE_ACCOUNT_B64 is not a service account JSON object", e);
+            throw new Bank2SheetsException("GOOGLE_SERVICE_ACCOUNT_B64 is not a service account JSON object", e);
         }
     }
 
@@ -186,7 +189,7 @@ public final class GoogleSheetsClient {
         Response response = http.exchange("GET", valuesUrl(range),
                 Map.of("Authorization", "Bearer " + token), null);
         if (!response.ok()) {
-            throw new SheetsException("Google Sheets read failed (HTTP " + response.status() + "): "
+            throw new Bank2SheetsException("Google Sheets read failed (HTTP " + response.status() + "): "
                     + response.body());
         }
         return JsonParser.parseString(response.body()).getAsJsonObject();
@@ -196,7 +199,7 @@ public final class GoogleSheetsClient {
         Response response = http.exchange("POST", appendUrl(),
                 Map.of("Authorization", "Bearer " + token, "Content-Type", "application/json"), body);
         if (!response.ok()) {
-            throw new SheetsException("Google Sheets append failed (HTTP " + response.status() + "): "
+            throw new Bank2SheetsException("Google Sheets append failed (HTTP " + response.status() + "): "
                     + response.body());
         }
     }

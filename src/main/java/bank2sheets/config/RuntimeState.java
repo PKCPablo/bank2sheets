@@ -29,15 +29,6 @@ public final class RuntimeState {
         return file;
     }
 
-    /** Reads the persisted connection id, or null when the file is absent or the key is missing. */
-    public String connectionId() {
-        return read("saltedge");
-    }
-
-    public void saveConnectionId(String connectionId) {
-        save("saltedge", connectionId);
-    }
-
     /** Reads the provider's persisted id (Salt Edge connection id / Enable Banking session id). */
     public String read(String provider) {
         if (!Files.exists(file)) {

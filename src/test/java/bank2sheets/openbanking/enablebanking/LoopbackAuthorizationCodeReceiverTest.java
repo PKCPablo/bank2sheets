@@ -1,5 +1,7 @@
 package bank2sheets.openbanking.enablebanking;
 
+import bank2sheets.Bank2SheetsException;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -67,7 +69,7 @@ class LoopbackAuthorizationCodeReceiverTest {
         LoopbackAuthorizationCodeReceiver receiver = new LoopbackAuthorizationCodeReceiver(
                 URI.create("http://127.0.0.1:0/bank2sheets/callback"), 1);
 
-        EnableBankingException error = assertThrows(EnableBankingException.class,
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
                 receiver::awaitCallbackUrl);
 
         assertTrue(error.getMessage().contains("Timed out after 1 s"));

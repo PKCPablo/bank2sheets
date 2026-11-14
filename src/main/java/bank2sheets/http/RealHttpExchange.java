@@ -1,5 +1,7 @@
 package bank2sheets.http;
 
+import bank2sheets.Bank2SheetsException;
+
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -23,7 +25,7 @@ public final class RealHttpExchange implements HttpExchange {
             return new Response(response.statusCode(), response.body());
         } catch (IOException | InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new HttpExchangeException("HTTP request failed: " + method + " " + url, e);
+            throw new Bank2SheetsException("HTTP request failed: " + method + " " + url, e);
         }
     }
 }

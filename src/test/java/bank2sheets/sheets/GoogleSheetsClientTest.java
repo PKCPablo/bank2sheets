@@ -1,5 +1,7 @@
 package bank2sheets.sheets;
 
+import bank2sheets.Bank2SheetsException;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -26,7 +28,7 @@ class GoogleSheetsClientTest {
 
     @Test
     void existingTransactionIdsSkipsHeaderAndParsesColumnE() {
-        FakeSheetsHttp http = new FakeSheetsHttp();
+        FakeHttp http = SheetsTestSupport.fakeHttp();
         SheetsTestSupport.stubToken(http);
         http.stub("/sheet-1/values/E2:E",
                 """
@@ -39,7 +41,7 @@ class GoogleSheetsClientTest {
 
     @Test
     void existingTransactionIdsIsEmptyWhenSheetHasNoData() {
-        FakeSheetsHttp http = new FakeSheetsHttp();
+        FakeHttp http = SheetsTestSupport.fakeHttp();
         SheetsTestSupport.stubToken(http);
         http.stub("/sheet-1/values/E2:E", "{}");
         GoogleSheetsClient client = new GoogleSheetsClient(SheetsTestSupport.config(), http);
@@ -49,7 +51,7 @@ class GoogleSheetsClientTest {
 
     @Test
     void tokenRequestUsesJwtBearerGrantAndCachesToken() {
-        FakeSheetsHttp http = new FakeSheetsHttp();
+        FakeHttp http = SheetsTestSupport.fakeHttp();
         SheetsTestSupport.stubToken(http);
         http.stub("/sheet-1/values/E2:E", "{}");
         GoogleSheetsClient client = new GoogleSheetsClient(SheetsTestSupport.config(), http);
@@ -57,23 +59,23 @@ class GoogleSheetsClientTest {
         client.existingTransactionIds();
         client.existingTransactionIds();
 
-        long tokenRequests = http.requests().stream()
+        long tokenRequests = http.requests.stream()
                 .filter(r -> r.url().equals("https://oauth2.googleapis.com/token"))
                 .count();
         assertEquals(1, tokenRequests);
-        FakeHttp.Request token = http.requests().get(0);
+        FakeHttp.Request token = http.requests.get(0);
         assertEquals("POST", token.method());
         assertTrue(token.body().startsWith(
                 "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion="));
         String assertion = token.body().substring(token.body().indexOf("assertion=") + "assertion=".length());
         assertEquals(3, assertion.split("\\.").length);
-        FakeHttp.Request read = http.requests().get(1);
+        FakeHttp.Request read = http.requests.get(1);
         assertEquals("Bearer tok-123", read.headers().get("Authorization"));
     }
 
     @Test
     void appendRowsWritesHeaderThenDataWithAmountsAsNumbers() {
-        FakeSheetsHttp http = new FakeSheetsHttp();
+        FakeHttp http = SheetsTestSupport.fakeHttp();
         SheetsTestSupport.stubToken(http);
         http.stub("/sheet-1/values/A1:E1", "{}");
         http.stub("/sheet-1/values/A1:E:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
@@ -84,14 +86,14 @@ class GoogleSheetsClientTest {
                 new SheetRow("2026-08-02", "Cafe", new BigDecimal("-3.20"), "EUR", "t2")));
 
         // requests: 0=token, 1=header read, 2=header append, 3=data append
-        assertEquals(4, http.requests().size());
-        FakeHttp.Request headerAppend = http.requests().get(2);
+        assertEquals(4, http.requests.size());
+        FakeHttp.Request headerAppend = http.requests.get(2);
         assertEquals("POST", headerAppend.method());
         assertTrue(headerAppend.url().endsWith(":append?valueInputOption=RAW"));
         assertEquals("{\"values\":[[\"Fecha\",\"Descripción\",\"Importe\",\"Moneda\",\"TransactionId\"]]}",
                 headerAppend.body());
 
-        FakeHttp.Request dataAppend = http.requests().get(3);
+        FakeHttp.Request dataAppend = http.requests.get(3);
         String body = dataAppend.body();
         assertFalse(body.contains("\"1200.50\""));
         JsonArray values = JsonParser.parseString(body).getAsJsonObject().getAsJsonArray("values");
@@ -107,7 +109,7 @@ class GoogleSheetsClientTest {
 
     @Test
     void appendRowsSkipsHeaderWhenAlreadyPresent() {
-        FakeSheetsHttp http = new FakeSheetsHttp();
+        FakeHttp http = SheetsTestSupport.fakeHttp();
         SheetsTestSupport.stubToken(http);
         http.stub("/sheet-1/values/A1:E1",
                 "{\"values\":[[\"Fecha\",\"Descripción\",\"Importe\",\"Moneda\",\"TransactionId\"]]}");
@@ -117,75 +119,75 @@ class GoogleSheetsClientTest {
         client.appendRows(List.of(new SheetRow("2026-08-01", "Nomina", new BigDecimal("100"), "EUR", "t1")));
 
         // token + header read + one data append (no header append)
-        assertEquals(3, http.requests().size());
-        assertEquals(2, http.requests().stream().filter(r -> "POST".equals(r.method())).count());
-        assertTrue(http.requests().get(2).url().endsWith(":append?valueInputOption=RAW"));
+        assertEquals(3, http.requests.size());
+        assertEquals(2, http.requests.stream().filter(r -> "POST".equals(r.method())).count());
+        assertTrue(http.requests.get(2).url().endsWith(":append?valueInputOption=RAW"));
     }
 
     @Test
     void appendRowsWithNoRowsDoesNothing() {
-        FakeSheetsHttp http = new FakeSheetsHttp();
+        FakeHttp http = SheetsTestSupport.fakeHttp();
         GoogleSheetsClient client = new GoogleSheetsClient(SheetsTestSupport.config(), http);
 
         client.appendRows(List.of());
 
-        assertTrue(http.requests().isEmpty());
+        assertTrue(http.requests.isEmpty());
     }
 
     @Test
     void createFailsFastWithoutServiceAccountConfig() {
-        SheetsException error = assertThrows(SheetsException.class,
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
                 () -> GoogleSheetsClient.create(new SheetsConfig("", "sheet-1")));
         assertTrue(error.getMessage().contains("GOOGLE_SERVICE_ACCOUNT_B64"));
     }
 
     @Test
     void createFailsFastWithoutSpreadsheetConfig() {
-        SheetsException error = assertThrows(SheetsException.class,
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
                 () -> GoogleSheetsClient.create(new SheetsConfig(SheetsTestSupport.serviceAccountB64(), "")));
         assertTrue(error.getMessage().contains("GOOGLE_SPREADSHEET_ID"));
     }
 
     @Test
     void invalidServiceAccountBase64Fails() {
-        FakeSheetsHttp http = new FakeSheetsHttp();
+        FakeHttp http = SheetsTestSupport.fakeHttp();
         GoogleSheetsClient client = new GoogleSheetsClient(new SheetsConfig("not-base64!!", "sheet-1"), http);
 
-        SheetsException error = assertThrows(SheetsException.class, client::existingTransactionIds);
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class, client::existingTransactionIds);
         assertTrue(error.getMessage().contains("GOOGLE_SERVICE_ACCOUNT_B64"));
     }
 
     @Test
     void serviceAccountWithoutCredentialsFails() {
-        FakeSheetsHttp http = new FakeSheetsHttp();
+        FakeHttp http = SheetsTestSupport.fakeHttp();
         String b64 = Base64.getEncoder()
                 .encodeToString("{\"type\":\"service_account\"}".getBytes(StandardCharsets.UTF_8));
         GoogleSheetsClient client = new GoogleSheetsClient(new SheetsConfig(b64, "sheet-1"), http);
 
-        SheetsException error = assertThrows(SheetsException.class, client::existingTransactionIds);
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class, client::existingTransactionIds);
         assertTrue(error.getMessage().contains("client_email"));
     }
 
     @Test
     void nonSuccessReadThrows() {
-        FakeSheetsHttp http = new FakeSheetsHttp();
+        FakeHttp http = SheetsTestSupport.fakeHttp();
         SheetsTestSupport.stubToken(http);
         http.stub("/sheet-1/values/E2:E", 403, "{\"error\":{\"message\":\"permission denied\"}}");
         GoogleSheetsClient client = new GoogleSheetsClient(SheetsTestSupport.config(), http);
 
-        SheetsException error = assertThrows(SheetsException.class, client::existingTransactionIds);
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class, client::existingTransactionIds);
         assertTrue(error.getMessage().contains("403"));
     }
 
     @Test
     void nonSuccessAppendThrows() {
-        FakeSheetsHttp http = new FakeSheetsHttp();
+        FakeHttp http = SheetsTestSupport.fakeHttp();
         SheetsTestSupport.stubToken(http);
         http.stub("/sheet-1/values/A1:E1", "{}");
         http.stub("/sheet-1/values/A1:E:append?valueInputOption=RAW", 500, "{\"error\":{\"message\":\"boom\"}}");
         GoogleSheetsClient client = new GoogleSheetsClient(SheetsTestSupport.config(), http);
 
-        SheetsException error = assertThrows(SheetsException.class,
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
                 () -> client.appendRows(List.of(new SheetRow("2026-08-01", "Nomina", new BigDecimal("1"), "EUR", "t1"))));
         assertTrue(error.getMessage().contains("append failed"));
         assertTrue(error.getMessage().contains("500"));

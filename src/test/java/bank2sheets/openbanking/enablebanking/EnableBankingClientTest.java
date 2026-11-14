@@ -1,11 +1,14 @@
 package bank2sheets.openbanking.enablebanking;
 
+import bank2sheets.Bank2SheetsException;
+
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import bank2sheets.TestKeys;
 import bank2sheets.config.EnableBankingConfig;
 import bank2sheets.http.HttpExchange.Response;
 import bank2sheets.model.Account;
@@ -15,11 +18,10 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -113,7 +115,7 @@ class EnableBankingClientTest {
         http.stub("/auth", "{\"url\": \"https://auth.enablebanking.com/authorize?x=1\"}");
         EnableBankingClient client = client(http, () -> "https://cb?code=c&state=other-state");
         client.connect();
-        EnableBankingException error = assertThrows(EnableBankingException.class,
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
                 client::findConnectionId);
         assertTrue(error.getMessage().contains("state mismatch"));
     }
@@ -272,7 +274,7 @@ class EnableBankingClientTest {
         EnableBankingClient client = client(http, () -> "");
         client.setSessionId("sess-1");
 
-        EnableBankingException error = assertThrows(EnableBankingException.class,
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
                 client::listAccounts);
         assertTrue(error.getMessage().contains("no accounts array"));
     }
@@ -366,7 +368,7 @@ class EnableBankingClientTest {
                 """);
         EnableBankingClient client = client(http, () -> "");
 
-        EnableBankingException error = assertThrows(EnableBankingException.class,
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
                 () -> client.fetchTransactions("uuid-1"));
         assertTrue(error.getMessage().contains("booking_date/value_date/transaction_date"));
     }
@@ -377,7 +379,7 @@ class EnableBankingClientTest {
         http.responses.put("/sessions/sess-1", new Response(401, "{\"error\": \"bad token\"}"));
         EnableBankingClient client = client(http, () -> "");
 
-        EnableBankingException error = assertThrows(EnableBankingException.class,
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
                 () -> client.isActive("sess-1"));
         assertTrue(error.getMessage().contains("401"));
         assertTrue(error.getMessage().contains("GET"));
@@ -398,13 +400,9 @@ class EnableBankingClientTest {
     /** Mirrors the client's canonical fallback: {@code eb:sha256:} + sha256 hex of the fields. */
     private static String hashId(String canonical) {
         try {
-            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
-                    .digest(canonical.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder();
-            for (byte b : digest) {
-                hex.append("%02x".formatted(b));
-            }
-            return "eb:sha256:" + hex;
+            return "eb:sha256:" + HexFormat.of().formatHex(
+                    java.security.MessageDigest.getInstance("SHA-256")
+                            .digest(canonical.getBytes(StandardCharsets.UTF_8)));
         } catch (java.security.NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }
@@ -415,22 +413,7 @@ class EnableBankingClientTest {
     }
 
     private static EnableBankingConfig config() {
-        return new EnableBankingConfig("app-1", base64Pem(), "http://127.0.0.1:8765/bank2sheets/callback");
+        return new EnableBankingConfig("app-1", TestKeys.base64Pem(), "http://127.0.0.1:8765/bank2sheets/callback");
     }
 
-    /** Generates a throwaway RSA key pair and returns its base64 PKCS#8 PEM. */
-    private static String base64Pem() {
-        try {
-            KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
-            generator.initialize(2048);
-            KeyPair keys = generator.generateKeyPair();
-            String pem = "-----BEGIN PRIVATE KEY-----\n"
-                    + Base64.getMimeEncoder(64, "\n".getBytes(StandardCharsets.UTF_8))
-                            .encodeToString(keys.getPrivate().getEncoded())
-                    + "\n-----END PRIVATE KEY-----";
-            return Base64.getEncoder().encodeToString(pem.getBytes(StandardCharsets.UTF_8));
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
-    }
 }

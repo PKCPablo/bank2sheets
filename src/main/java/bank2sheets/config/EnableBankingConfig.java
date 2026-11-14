@@ -6,18 +6,13 @@ import java.util.Map;
 
 /**
  * Runtime configuration for the Enable Banking adapter, read from environment
- * variables at runtime and never stored in the repository:
- * <ul>
- *   <li>{@code ENABLE_BANKING_APP_ID} - Enable Banking application id (JWT {@code kid})</li>
- *   <li>{@code ENABLE_BANKING_PRIVATE_KEY_B64} - base64-encoded PKCS#8 PEM private key
- *       ({@code -----BEGIN PRIVATE KEY-----}; convert PKCS#1 keys with
- *       {@code openssl pkcs8 -topk8 -nocrypt})</li>
- *   <li>{@code ENABLE_BANKING_REDIRECT_URL} - application redirect URL; two modes:
- *       {@code http} on {@code 127.0.0.1}/{@code localhost} with an explicit port and a
- *       non-empty path (sandbox loopback listener), or {@code https} with a non-blank
- *       host and a non-empty path (production, e.g. the GitHub Pages callback page,
- *       where the user pastes the callback URL into the CLI)</li>
- * </ul>
+ * variables at runtime and never stored in the repository; the variable names
+ * are documented in the README configuration table.
+ *
+ * <p>The private key is a base64-encoded PKCS#8 PEM ({@code BEGIN PRIVATE KEY});
+ * convert PKCS#1 keys with {@code openssl pkcs8 -topk8 -nocrypt}. The redirect URL
+ * is validated in two modes: {@code http} loopback ({@code 127.0.0.1}/{@code localhost},
+ * explicit port, non-empty path) or {@code https} (non-blank host, non-empty path).
  */
 public record EnableBankingConfig(String appId, String privateKeyB64, String redirectUrl) {
 
@@ -46,18 +41,7 @@ public record EnableBankingConfig(String appId, String privateKeyB64, String red
                 env.getOrDefault("ENABLE_BANKING_REDIRECT_URL", ""));
     }
 
-    /**
-     * Two redirect modes are accepted:
-     * <ul>
-     *   <li>{@code http} loopback: bound by a local HTTP listener, so it must point at
-     *       127.0.0.1/localhost with an explicit port (an omitted port would surface as a
-     *       raw {@code IllegalArgumentException} from {@code InetSocketAddress}) and a
-     *       non-empty path.</li>
-     *   <li>{@code https}: served by an external page (e.g. the GitHub Pages callback);
-     *       requires a non-blank host and a non-empty path; the user pastes the callback
-     *       URL into the CLI.</li>
-     * </ul>
-     */
+    /** Validates the redirect URL per the two modes described in the class Javadoc. */
     private static void validateRedirectUrl(String url) {
         URI uri;
         try {

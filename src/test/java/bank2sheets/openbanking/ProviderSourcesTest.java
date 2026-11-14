@@ -5,14 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import bank2sheets.Bank2SheetsException;
+import bank2sheets.TestKeys;
 import bank2sheets.config.AccountConfig;
 import bank2sheets.config.AppConfig;
 import bank2sheets.openbanking.enablebanking.EnableBankingClient;
 import bank2sheets.openbanking.saltedge.SaltEdgeClient;
-import java.nio.charset.StandardCharsets;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.util.Base64;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -41,7 +38,7 @@ class ProviderSourcesTest {
 
     @Test
     void enableBankingRequiresAppId() {
-        AppConfig cfg = new AppConfig("", "", "", "", "", base64Pem(),
+        AppConfig cfg = new AppConfig("", "", "", "", "", TestKeys.base64Pem(),
                 "http://127.0.0.1:8765/bank2sheets/callback", "", ENABLE_BANKING_ACCOUNTS);
         Bank2SheetsException ex = assertThrows(Bank2SheetsException.class, () -> ProviderSources.create(cfg));
         assertTrue(ex.getMessage().contains("ENABLE_BANKING_APP_ID"));
@@ -57,7 +54,7 @@ class ProviderSourcesTest {
 
     @Test
     void enableBankingRequiresRedirectUrl() {
-        AppConfig cfg = new AppConfig("", "", "", "", "app-1", base64Pem(), "", "",
+        AppConfig cfg = new AppConfig("", "", "", "", "app-1", TestKeys.base64Pem(), "", "",
                 ENABLE_BANKING_ACCOUNTS);
         Bank2SheetsException ex = assertThrows(Bank2SheetsException.class, () -> ProviderSources.create(cfg));
         assertTrue(ex.getMessage().contains("ENABLE_BANKING_REDIRECT_URL"));
@@ -65,14 +62,14 @@ class ProviderSourcesTest {
 
     @Test
     void enableBankingReturnsClientAndSetsSession() {
-        AppConfig cfg = new AppConfig("", "", "", "", "app-1", base64Pem(),
+        AppConfig cfg = new AppConfig("", "", "", "", "app-1", TestKeys.base64Pem(),
                 "http://127.0.0.1:8765/bank2sheets/callback", "session-1", ENABLE_BANKING_ACCOUNTS);
         assertInstanceOf(EnableBankingClient.class, ProviderSources.create(cfg));
     }
 
     @Test
     void enableBankingAcceptsHttpsRedirectUrl() {
-        AppConfig cfg = new AppConfig("", "", "", "", "app-1", base64Pem(),
+        AppConfig cfg = new AppConfig("", "", "", "", "app-1", TestKeys.base64Pem(),
                 "https://pkcpablo.github.io/bank2sheets/callback.html", "", ENABLE_BANKING_ACCOUNTS);
         assertInstanceOf(EnableBankingClient.class, ProviderSources.create(cfg));
     }
@@ -85,19 +82,4 @@ class ProviderSourcesTest {
         assertTrue(ex.getMessage().contains("Unsupported provider"));
     }
 
-    /** Generates a throwaway RSA key pair and returns its base64 PKCS#8 PEM. */
-    private static String base64Pem() {
-        try {
-            KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
-            generator.initialize(2048);
-            KeyPair keys = generator.generateKeyPair();
-            String pem = "-----BEGIN PRIVATE KEY-----\n"
-                    + Base64.getMimeEncoder(64, "\n".getBytes(StandardCharsets.UTF_8))
-                            .encodeToString(keys.getPrivate().getEncoded())
-                    + "\n-----END PRIVATE KEY-----";
-            return Base64.getEncoder().encodeToString(pem.getBytes(StandardCharsets.UTF_8));
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
-    }
 }

@@ -7,19 +7,11 @@ import java.util.Map;
 
 /**
  * Runtime configuration assembled from environment variables. Credentials and
- * connection state are read at runtime and never stored in the repository.
+ * connection state are read at runtime and never stored in the repository; the
+ * variable names are documented in the README configuration table.
  *
- * <p>Environment variables:
- * <ul>
- *   <li>{@code SALTEDGE_APP_ID}, {@code SALTEDGE_SECRET} - Salt Edge API key (App-id/Secret headers)</li>
- *   <li>{@code SALTEDGE_CUSTOMER_ID} - Salt Edge customer that owns the connection</li>
- *   <li>{@code SALTEDGE_CONNECTION_ID} - active Salt Edge connection, persisted by {@code connect}</li>
- *   <li>{@code ENABLE_BANKING_APP_ID}, {@code ENABLE_BANKING_PRIVATE_KEY_B64},
- *       {@code ENABLE_BANKING_REDIRECT_URL} - Enable Banking application credentials</li>
- *   <li>{@code ENABLE_BANKING_SESSION_ID} - active Enable Banking session, persisted by {@code connect}</li>
- *   <li>{@code BANK2SHEETS_ACCOUNTS} - comma-separated {@code provider:accountId} entries to fetch
- *       ({@code saltedge:<id>} or {@code enablebanking:<uuid>}); all entries must share one provider</li>
- * </ul>
+ * <p>{@code BANK2SHEETS_ACCOUNTS} holds comma-separated {@code provider:accountId}
+ * entries; all entries must share one provider.
  */
 public record AppConfig(
         String saltEdgeAppId,

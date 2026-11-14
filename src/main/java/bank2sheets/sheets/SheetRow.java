@@ -18,7 +18,7 @@ public record SheetRow(
         String moneda,
         String transactionId) {
 
-    /** Column order; matches the spreadsheet header written by {@link GoogleSheetsClient}. */
+    /** Column order; matches the spreadsheet header written by {@link GoogleSheetsClient} (must match HEADER_VALUES). */
     List<Object> values() {
         return List.<Object>of(fecha, descripcion, importe, moneda, transactionId);
     }

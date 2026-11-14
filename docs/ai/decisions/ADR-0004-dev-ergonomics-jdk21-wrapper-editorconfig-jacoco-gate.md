@@ -23,6 +23,10 @@ Adopt `scripts/mvn.ps1` and `scripts/run.ps1` as the canonical development entry
 - `.editorconfig` establishes LF as the repo convention going forward (some existing files such as `AGENTS.md` are still committed CRLF; normalizing them is a separate, explicit change).
 - Future coverage regressions surface in the dev loop rather than CI.
 
-## Implementation note (2026-10-27)
+## Implementation note (2026-10-27) - superseded by the 2026-11-14 note
 
 - `scripts/mvn.ps1` now keeps an active JDK 21+ `JAVA_HOME` and otherwise discovers the highest `jdk-21*` installation under `C:\Program Files\Java`, failing with a clear actionable message when none exists. The previous hardcoded JDK path was removed, and an empty or unset `JAVA_HOME` is handled without path errors.
+
+## Implementation note (2026-11-14)
+
+- JDK discovery no longer sorts `jdk-21*` directories by version. `scripts/jdk.ps1` returns the first working JDK 21+ candidate (active JDK 21+ `JAVA_HOME`, then any `jdk-21*` under `C:\Program Files\Java`, then a JDK 21+ `java` on `PATH`). `Get-JdkNameVersion` and the descending `Sort-Object` were removed; current docs say "a `jdk-21*` installation" instead of "the highest".

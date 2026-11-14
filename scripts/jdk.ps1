@@ -19,23 +19,6 @@ function Get-JavaExeMajorVersion {
     return $null
 }
 
-function Get-JdkNameVersion {
-    # ponytail: this name-version parser plus the descending sort in Find-Jdk21Home
-    # exist only to honor the README's "highest jdk-21*" rule; if any JDK 21+ is
-    # acceptable, delete both and return the first working candidate.
-    param([string]$Name)
-
-    $raw = $Name -replace '^jdk-', ''
-    if ($raw -notmatch '\.') {
-        $raw = "$raw.0"
-    }
-    if ($raw -match '^\d+(\.\d+)+$') {
-        return [version]$raw
-    }
-
-    return [version]'0.0'
-}
-
 function Find-Jdk21Home {
     if (-not [string]::IsNullOrWhiteSpace($env:JAVA_HOME)) {
         $javaHomeExe = Join-Path $env:JAVA_HOME 'bin\java.exe'
@@ -45,8 +28,7 @@ function Find-Jdk21Home {
     }
 
     $candidates = @(
-        Get-ChildItem -LiteralPath $script:JdkRoot -Directory -Filter 'jdk-21*' -ErrorAction SilentlyContinue |
-            Sort-Object -Property @{ Expression = { Get-JdkNameVersion $_.Name }; Descending = $true }, Name -Descending
+        Get-ChildItem -LiteralPath $script:JdkRoot -Directory -Filter 'jdk-21*' -ErrorAction SilentlyContinue
     )
 
     foreach ($candidate in $candidates) {

@@ -1,5 +1,7 @@
 package bank2sheets.openbanking.enablebanking;
 
+import bank2sheets.Bank2SheetsException;
+
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -59,7 +61,7 @@ public final class LoopbackAuthorizationCodeReceiver implements AuthorizationCod
             created = HttpServer.create(new InetSocketAddress("127.0.0.1", redirectUrl.getPort()), 0);
         } catch (IOException | IllegalArgumentException e) {
             // IllegalArgumentException: invalid port (e.g. -1 when omitted) or bind failure.
-            throw new EnableBankingException(
+            throw new Bank2SheetsException(
                     "Cannot bind loopback callback listener on 127.0.0.1:" + redirectUrl.getPort()
                             + redirectUrl.getPath(), e);
         }
@@ -86,15 +88,15 @@ public final class LoopbackAuthorizationCodeReceiver implements AuthorizationCod
         try {
             return future.get(timeoutSeconds, TimeUnit.SECONDS);
         } catch (TimeoutException e) {
-            throw new EnableBankingException(
+            throw new Bank2SheetsException(
                     "Timed out after " + timeoutSeconds + " s waiting for the authorization callback on "
                             + "http://127.0.0.1:" + boundPort + redirectUrl.getPath()
                             + "; complete the SCA flow in the bank app and retry");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new EnableBankingException("Interrupted while waiting for the authorization callback", e);
+            throw new Bank2SheetsException("Interrupted while waiting for the authorization callback", e);
         } catch (ExecutionException e) {
-            throw new EnableBankingException("Failed to capture the authorization callback", e.getCause());
+            throw new Bank2SheetsException("Failed to capture the authorization callback", e.getCause());
         } finally {
             stop();
         }

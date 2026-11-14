@@ -1,5 +1,7 @@
 package bank2sheets.openbanking.enablebanking;
 
+import bank2sheets.Bank2SheetsException;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -20,13 +22,13 @@ class PasteAuthorizationCodeReceiverTest {
     @Test
     void blankInputThrows() {
         PasteAuthorizationCodeReceiver receiver = new PasteAuthorizationCodeReceiver(() -> "   ");
-        EnableBankingException error = assertThrows(EnableBankingException.class, receiver::awaitCallbackUrl);
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class, receiver::awaitCallbackUrl);
         assertTrue(error.getMessage().contains("blank"));
     }
 
     @Test
     void nullInputThrows() {
         PasteAuthorizationCodeReceiver receiver = new PasteAuthorizationCodeReceiver(() -> null);
-        assertThrows(EnableBankingException.class, receiver::awaitCallbackUrl);
+        assertThrows(Bank2SheetsException.class, receiver::awaitCallbackUrl);
     }
 }

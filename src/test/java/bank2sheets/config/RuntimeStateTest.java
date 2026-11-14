@@ -17,15 +17,15 @@ class RuntimeStateTest {
 
     @Test
     void missingFileYieldsNullConnectionId() {
-        assertNull(new RuntimeState(tempDir.resolve("none.properties")).connectionId());
+        assertNull(new RuntimeState(tempDir.resolve("none.properties")).read("saltedge"));
     }
 
     @Test
     void savesAndReadsConnectionId() {
         Path file = tempDir.resolve("state.properties");
         RuntimeState state = new RuntimeState(file);
-        state.saveConnectionId("conn-1");
-        assertEquals("conn-1", state.connectionId());
+        state.save("saltedge", "conn-1");
+        assertEquals("conn-1", state.read("saltedge"));
     }
 
     @Test
@@ -37,7 +37,6 @@ class RuntimeStateTest {
 
         assertEquals("conn-1", state.read("saltedge"));
         assertEquals("sess-1", state.read("enablebanking"));
-        assertEquals("conn-1", state.connectionId());
         assertTrue(Files.readString(file).contains("saltedge.connection_id=conn-1"));
         assertTrue(Files.readString(file).contains("enablebanking.session_id=sess-1"));
     }

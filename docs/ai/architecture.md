@@ -35,7 +35,7 @@ Enable Banking contract: Open Banking Gateway API (`https://api.enablebanking.co
 
 Salt Edge contract (legacy, discarded — removal tracked in issue #7): **API V6** (`https://www.saltedge.com/api/v6`). Keys must be **Service API keys** from the Salt Edge dashboard (API Keys page, type Service); App API keys don't work in V6. The `App-id`/`Secret` headers and env var names are unchanged. AIS-only read consent with scopes `accounts` (covers accounts + balance) and `transactions`; PIS is never requested.
 
-Local build note (machine-specific, revalidated 2026-10-27): Maven 3.9.9 defaults to JDK 8 (`JAVA_HOME` = `C:\Program Files\Java\jdk-1.8`). `scripts/mvn.ps1` keeps an active JDK 21+ `JAVA_HOME` and otherwise discovers the highest `jdk-21*` installation under `C:\Program Files\Java` (here Temurin 21.0.12 at `C:\Program Files\Java\jdk-21`), failing with a clear message when none exists.
+Local build note (machine-specific, revalidated 2026-11-14): Maven 3.9.9 defaults to JDK 8 (`JAVA_HOME` = `C:\Program Files\Java\jdk-1.8`). `scripts/mvn.ps1` keeps an active JDK 21+ `JAVA_HOME` and otherwise discovers a `jdk-21*` installation under `C:\Program Files\Java` (here Temurin 21.0.12 at `C:\Program Files\Java\jdk-21`), failing with a clear message when none exists.
 
 ## Boundaries
 

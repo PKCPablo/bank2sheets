@@ -5,20 +5,20 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import bank2sheets.Bank2SheetsException;
+import bank2sheets.TestKeys;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
-import java.security.KeyPairGenerator;
 import java.security.Signature;
 import java.util.Base64;
 import org.junit.jupiter.api.Test;
 
-/** Rs256Jwt tests with a generated RSA key pair; no real credentials. */
+/** Rs256Jwt tests with the shared throwaway RSA key pair; no real credentials. */
 class Rs256JwtTest {
 
     @Test
     void encodeProducesVerifiableCompactJwt() throws Exception {
-        KeyPair keys = rsaKeys();
-        String pem = pkcs8Pem(keys);
+        KeyPair keys = TestKeys.keyPair();
+        String pem = TestKeys.pkcs8Pem();
         String header = "{\"alg\":\"RS256\",\"typ\":\"JWT\",\"kid\":\"app-1\"}";
         String claims = "{\"iss\":\"enablebanking.com\",\"iat\":1000,\"exp\":4600}";
 
@@ -53,15 +53,4 @@ class Rs256JwtTest {
         }
     }
 
-    private static KeyPair rsaKeys() throws Exception {
-        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
-        generator.initialize(2048);
-        return generator.generateKeyPair();
-    }
-
-    private static String pkcs8Pem(KeyPair keys) {
-        String base64 = Base64.getMimeEncoder(64, "\n".getBytes(StandardCharsets.UTF_8))
-                .encodeToString(keys.getPrivate().getEncoded());
-        return "-----BEGIN PRIVATE KEY-----\n" + base64 + "\n-----END PRIVATE KEY-----";
-    }
 }
