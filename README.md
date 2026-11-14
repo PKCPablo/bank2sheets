@@ -109,3 +109,9 @@ Caveats:
 ## Google Sheets layout
 
 `sync` targets the first sheet with columns `Fecha`, `Descripción`, `Importe`, `Moneda`, `TransactionId`. Rows are appended with `valueInputOption=RAW`, so amounts (e.g. `1200.50`) stay numeric cells instead of text or formulas. The header row is written once when missing. TransactionId is the dedupe key: running `sync` twice appends no duplicates.
+
+## License
+
+Released under the [MIT License](LICENSE).
+
+Copyright (c) 2026 PKCPablo.
