@@ -17,7 +17,6 @@
     <license>
       <name>MIT License</name>
       <url>https://opensource.org/licenses/MIT</url>
-      <distribution>repo</distribution>
     </license>
   </licenses>
 
@@ -31,7 +30,6 @@
 
   <scm>
     <connection>scm:git:https://github.com/PKCPablo/bank2sheets.git</connection>
-    <developerConnection>scm:git:https://github.com/PKCPablo/bank2sheets.git</developerConnection>
     <url>https://github.com/PKCPablo/bank2sheets</url>
   </scm>
 
