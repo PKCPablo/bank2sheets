@@ -12,7 +12,7 @@
 - HTTP: JDK `java.net.http.HttpClient`; JSON: Gson (smallest stable lib, no transitive deps; ponytail decision over Jackson).
 - Google Sheets: no official client library — stdlib `java.net.http.HttpClient` + stdlib RS256 service-account JWT (RFC 7523) + Gson. Auth with a Google service account (the spreadsheet is shared with its email). No interactive OAuth.
 - Testing: JUnit 5 (minimum).
-- Execution: on-demand locally (`connect` / `fetch` / `sync` CLI) plus scheduled sync via `.github/workflows/sync.yml` (daily 06:00 UTC + `workflow_dispatch`; Actions secrets; never runs `connect` — the ephemeral runner uses `ENABLE_BANKING_SESSION_ID` from secrets). Verification pending the owner adding secrets (issue #4).
+- Execution: on-demand locally (`connect` / `fetch` / `sync` CLI) plus scheduled sync via `.github/workflows/sync.yml` (daily 06:00 UTC + `workflow_dispatch`; Actions secrets; never runs `connect` — the ephemeral runner uses `ENABLE_BANKING_SESSION_ID` from secrets). Verified 2026-11-14 via `workflow_dispatch` (issue #4 closed).
 - Open Banking providers: the primary provider is **Enable Banking restricted production** (free, personal use, own linked accounts; ADR-0005, 2026-11-13), implemented behind the `TransactionSource` seam and selected by the `ProviderSources` factory. The Enable Banking sandbox was validated 2026-11-13 (`connect`/`fetch`; `sync` twice → 17 then 0 rows) and production real BBVA on 2026-11-14 (`fetch` 171 transactions; `sync` twice → 171 then 0 rows). Salt Edge V6 remains a selectable fallback (sandbox-validated with its fake BBVA provider; real BBVA was blocked there — `bbva_es` absent from the Service key catalog). Powens (ex Budget Insight) is the only aggregator verified for Trade Republic and is deferred until needed. GoCardless/Nordigen is not viable for new users (stopped onboarding, enterprise-only).
 
 ## Configuration / Environment (contract)
@@ -40,7 +40,7 @@ Local build note (machine-specific, revalidated 2026-10-27): Maven 3.9.9 default
 ## Boundaries
 
 - Never store or commit bank credentials or long-lived access tokens; sensitive values come only from the environment (Actions secrets for the scheduled workflow).
-- Execution is on-demand local (`connect` / `fetch` / `sync`); scheduled headless sync runs via `.github/workflows/sync.yml` (verification pending owner secrets, issue #4).
+- Execution is on-demand local (`connect` / `fetch` / `sync`); scheduled headless sync runs via `.github/workflows/sync.yml` (verified 2026-11-14 via `workflow_dispatch`, issue #4 closed).
 - Read source: Open Banking (PSD2) account transaction APIs. Write target: Google Sheets.
 - Bank access is isolated behind a `TransactionSource` interface; the provider is selected per invocation by the `ProviderSources.create(AppConfig)` factory, keyed by the provider in `BANK2SHEETS_ACCOUNTS` (one provider per run; mixed lists fail fast). When `BANK2SHEETS_ACCOUNTS` is empty, `connect` infers the provider from credentials (Enable Banking primary, Salt Edge fallback) and prints the available account ids/names after consent; `fetch`/`sync` still require accounts. The implemented providers are Enable Banking (primary) and Salt Edge (fallback). Adding Trade Republic later means adding a Powens implementation without touching the rest of the pipeline.
 - Bank access is read-only by design: only PSD2 AIS consent scopes are requested (`accounts` — covers accounts and balances — and `transactions`); PIS (payment initiation / transfers) is never requested.
