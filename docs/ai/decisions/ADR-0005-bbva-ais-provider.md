@@ -35,7 +35,7 @@ The Salt Edge application is currently in **Pending** status (owner-provided Cli
 | Test | Real banks | up to 100 | free of charge, 90-day window |
 | Live | Real banks | unlimited | billed per request |
 
-Salt Edge remains a possible 90-day free validation fallback only if the Enable Banking path fails, but it is not the planned provider.
+Salt Edge remained a possible 90-day free validation fallback only if the Enable Banking path failed, but it was not the planned provider. **Superseded 2026-11-14:** Enable Banking succeeded, so Salt Edge is discarded (see Amendment below).
 
 To upgrade from Pending to Test, Salt Edge requires: (1) Application Information in the Applications section, (2) Company Information, (3) valid Callback URLs, and (4) a Test access request on the "request test access" page; assessment takes up to two business days. Data destruction (customers, connections, accounts, transactions) is allowed while the application is not Live.
 
@@ -163,6 +163,10 @@ Invariants preserved: the `TransactionSource` seam, AIS-only read consent, no ne
 
 Follow-up: implemented by `plans/2026-11-13_171738-enable-banking-adapter.md` (Tasks 1-2 shipped: `EnableBankingClient`, `ProviderSources` factory, env/state contract, fake-HTTP tests; sandbox `connect`/`fetch`/`sync`-twice validated 2026-11-13; production real-BBVA validated 2026-11-14: `fetch` 171 transactions, `sync` twice 171 then 0 rows); tracked in GitHub issue #3.
 
+## Amendment (2026-11-14) — Salt Edge discarded; fallback code to be removed
+
+The Enable Banking adapter is validated in production with real BBVA (`fetch` 171 transactions; `sync` twice 171 then 0 rows), so the one-release Salt Edge retention from the adapter plan no longer applies. **Salt Edge is a discarded option and is not a fallback.** Its remaining client/config/state/test code is scheduled for removal in GitHub issue #7; until that lands, the tree still contains legacy Salt Edge paths that must not be used. The superseded Salt Edge V6 migration plan is kept for history only.
+
 ## Risks (accepted)
 
 - Restricted mode only exposes the specific accounts the owner links; linking is per-account and once linked, only those accounts are returned.
@@ -171,8 +175,8 @@ Follow-up: implemented by `plans/2026-11-13_171738-enable-banking-adapter.md` (T
 - The free restricted-production terms do not grant a permanent vested right; Enable Banking can change or withdraw the allowance.
 - Restricted mode is personal/non-commercial only; it cannot serve other users or public production.
 - The Enable Banking app needs an RSA signing key — a new secret type that must live only in the environment, never in the repo.
-- Salt Edge code remains in the tree until the adapter lands, so dead/fallback code must be removed or justified then.
-- The Salt Edge Test fallback (90 days) would itself require a Pending→Test upgrade and a public callback URL, so it is not a frictionless fallback.
+- Salt Edge code remained in the tree until the adapter landed; the adapter is now validated and the dead/fallback code removal is tracked in GitHub issue #7.
+- The Salt Edge Test fallback (90 days) would itself require a Pending→Test upgrade and a public callback URL, so it is not a frictionless fallback. **Historical:** Salt Edge is now discarded (see Amendment).
 
 ## Non-goals
 
@@ -184,8 +188,8 @@ Follow-up: implemented by `plans/2026-11-13_171738-enable-banking-adapter.md` (T
 ## Consequences
 
 - The decision is recorded: Enable Banking restricted production is the target provider; real BBVA access is conditionally unblocked: it is not verified until the owner completes the Enable Banking setup, links their BBVA account(s), and confirms the connect/SCA flow and transaction retrieval.
-- The Enable Banking adapter and provider factory have landed (`plans/2026-11-13_171738-enable-banking-adapter.md`); Salt Edge remains selectable as a fallback.
+- The Enable Banking adapter and provider factory have landed (`plans/2026-11-13_171738-enable-banking-adapter.md`). Salt Edge is discarded and no longer a fallback; its code removal is tracked in GitHub issue #7.
 - The provider env/state/factory changes are implemented in the follow-up plan; this decision added no dependency.
 - Outcome A (Salt Edge enablement) was not chosen: no support ticket was sent, no Test upgrade was requested, and no Live contract will be signed.
 - Outcome C (still blocked) did not apply: a viable free path exists via Enable Banking.
-- Salt Edge's free Test tier (90 days, real data) remains a fallback only if the Enable Banking path fails.
+- Salt Edge's free Test tier (90 days, real data) was a time-boxed fallback only; it is discarded now that Enable Banking is validated in production.

@@ -1,7 +1,9 @@
 ---
-status: planned
+status: superseded
 created: 2026-08-05
 phase: 1/2
+superseded: 2026-11-14
+superseded_by: "ADR-0005; GitHub issue #7"
 required_gates:
   test_verdict: false
   architect_review: true
@@ -9,6 +11,13 @@ required_gates:
 ---
 
 # Plan: Migración Salt Edge API V5 → V6
+
+> **Superseded 2026-11-14.** Salt Edge is a discarded option: ADR-0005 selected
+> Enable Banking and rejected Salt Edge (Live requires a paid legal-entity
+> contract; Test is time-boxed to 90 days). Phase 2 was never needed because real
+> BBVA access works through Enable Banking (production validated 2026-11-14).
+> Removing the Salt Edge fallback code is tracked in GitHub issue #7. This plan
+> is kept for history only.
 
 ## Goal
 

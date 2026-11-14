@@ -13,5 +13,5 @@ Required labels: `status:to-do`, `status:doing`, `status:in-review`, `status:blo
 
 ## Deferred / Pending
 
-- Nothing pending.
+- Salt Edge V6 is a discarded option (ADR-0005); remove its fallback code and legacy config/state paths — GitHub issue #7.
 

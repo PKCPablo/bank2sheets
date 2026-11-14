@@ -9,6 +9,10 @@ required_gates:
 
 # Enable Banking AIS adapter implementation plan
 
+> **Note (2026-11-14):** The Salt Edge retention decision in this completed plan
+> is historical. Salt Edge is a discarded option (ADR-0005); its removal is
+> tracked in GitHub issue #7.
+
 **Goal:** Replace the Salt Edge-only runtime path with a provider-neutral factory and a working Enable Banking AIS adapter in free restricted-production mode (personal use, owner-linked accounts), keeping the `TransactionSource` seam and the Google Sheets pipeline unchanged.
 
 **Architecture:** `EnableBankingClient` implements the existing five-method `TransactionSource` interface and talks to `https://api.enablebanking.com` through the shared `HttpExchange` seam. A provider-selection factory keyed by `BANK2SHEETS_ACCOUNTS` chooses the source; `AppConfig`/`AccountConfig`/`RuntimeState` gain provider-scoped credentials and state, and `Main` stops referencing Salt Edge directly. JWT signing is extracted from `GoogleSheetsClient` into one small JDK-only helper reused by both clients. No new runtime dependency.
@@ -38,7 +42,7 @@ required_gates:
 
 1. **Authorization-code capture (resolved 2026-11-13).** Sandbox keeps the `http://127.0.0.1:8765/bank2sheets/callback` loopback listener (bound before the URL; `code`/`state` captured locally). Enable Banking production apps reject `http` redirects, so production uses the static GitHub Pages callback `https://pkcpablo.github.io/bank2sheets/callback.html` (served from `/docs`) plus `PasteAuthorizationCodeReceiver`, which prompts the owner to paste the full callback URL. The owner enables Pages and registers that URL in the production app.
 2. **Private-key format and secret transport (blocking, recommend PKCS#8 base64).** Use `ENABLE_BANKING_PRIVATE_KEY_B64` holding a base64 PKCS#8 PEM (`-----BEGIN PRIVATE KEY-----`), mirroring `GOOGLE_SERVICE_ACCOUNT_B64`. If the owner's key is PKCS#1 (`BEGIN RSA PRIVATE KEY`), document the `openssl pkcs8 -topk8 -nocrypt` conversion rather than adding a parser.
-3. **Salt Edge retention (recommend keep selectable).** Keep `saltedge` accepted by the factory for one release as a fallback; removing `SaltEdgeClient` and its tests is a separate cleanup once Enable Banking has been validated. Reject this if the owner prefers deletion now.
+3. **Salt Edge retention (recommend keep selectable).** Keep `saltedge` accepted by the factory for one release as a fallback; removing `SaltEdgeClient` and its tests is a separate cleanup once Enable Banking has been validated. Reject this if the owner prefers deletion now. **Superseded 2026-11-14:** Enable Banking was validated; Salt Edge is discarded and removal is tracked in GitHub issue #7.
 4. **Transaction id prefix (recommend `eb:`).** Prefix every Enable Banking `Transaction.id` with `eb:` so it cannot collide with existing Salt Edge numeric ids in the same sheet. The Sheets dedupe key remains the TransactionId column.
 5. **One provider per invocation (recommend fail fast).** All `BANK2SHEETS_ACCOUNTS` entries must share the same provider; mixed providers fail with a clear message. Supporting mixed providers in one run is out of scope.
 6. **Gates:** `architect_review: true` for the provider factory/boundary and the `TransactionSource` fit; `memory_update: true` for `architecture.md`, `README.md`/`AGENTS.md`, ADR-0005 link, backlog, and the monthly log.
@@ -113,7 +117,7 @@ Only if the user explicitly asks. `git add` the new/modified files and use a `fe
 
 ## Task 2: Provider-neutral config, state, factory, and Main wiring
 
-**Objective:** Select the provider from `BANK2SHEETS_ACCOUNTS`, wire `EnableBankingClient` into `Main`, persist its session id, and keep Salt Edge working as a selectable fallback.
+**Objective:** Select the provider from `BANK2SHEETS_ACCOUNTS`, wire `EnableBankingClient` into `Main`, persist its session id, and keep Salt Edge working as a selectable fallback. _(Superseded 2026-11-14: Salt Edge is discarded; removal is tracked in issue #7.)_
 
 **Files:**
 - Modify: `src/main/java/bank2sheets/config/AppConfig.java`
@@ -141,7 +145,7 @@ Only if the user explicitly asks. `git add` the new/modified files and use a `fe
 - `AppConfigTest`: parses `enablebanking:<uuid>`, still parses `saltedge:<id>`, rejects a mixed list, rejects unknown providers, and reads all `ENABLE_BANKING_*` variables (including blank defaults).
 - `RuntimeStateTest`: writes/reads `enablebanking.session_id` and keeps the Salt Edge key readable; assert both keys coexist without clobbering.
 - `MainCommandsTest`: with `FakeHttp("https://api.enablebanking.com")` and a fake `AuthorizationCodeReceiver`, drive `connect` (state file gets `enablebanking.session_id`), `fetch` (prints the normalized JSON), a second `sync` (idempotent, appends nothing new), missing credentials, missing session, and a provider error (exit 1). Keep the existing Salt Edge cases green.
-- `README.md`: env table and example for Enable Banking, `enablebanking:<uuid>` accounts, and the note that Salt Edge remains selectable.
+- `README.md`: env table and example for Enable Banking, `enablebanking:<uuid>` accounts, and the note that Salt Edge remained selectable at that time _(superseded 2026-11-14: Salt Edge is discarded; removal is tracked in issue #7)_.
 
 **Step 3: Write minimal implementation**
 
@@ -215,7 +219,7 @@ Only if the user explicitly asks. Keep the docs/memory commit separate from the 
 
 - Provider factory and `TransactionSource` fit for Enable Banking (ADR-0005 follow-up link; report through the architect gate).
 - `enablebanking` env vars, `enablebanking.session_id` state key, and the `eb:` transaction-id prefix in `architecture.md`.
-- Salt Edge retention as a selectable fallback (or its removal, if the owner chooses).
+- Salt Edge retention as a selectable fallback (or its removal, if the owner chooses). _Superseded 2026-11-14: Salt Edge is discarded; removal is tracked in issue #7._
 - README/AGENTS two-provider usage and `docs/ai` status lines.
 
 ## Implementation Handoff
