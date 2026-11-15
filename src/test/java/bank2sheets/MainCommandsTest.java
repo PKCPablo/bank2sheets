@@ -34,6 +34,16 @@ class MainCommandsTest {
     private static final String HEADER_JSON =
             "{\"values\":[[\"Fecha\",\"Descripción\",\"Importe\",\"Moneda\",\"TransactionId\",\"Cuenta\"]]}";
 
+    /** Single NOMINA transaction payload shared by the sync/fetch tests. */
+    private static final String NOMINA_TRANSACTION_JSON = """
+            {"transactions": [
+              {"entry_reference": "ref-1", "credit_debit_indicator": "CRDT",
+               "transaction_amount": {"amount": "1200.50", "currency": "EUR"},
+               "remittance_information": ["Nomina"],
+               "booking_date": "2026-08-01"}
+            ]}
+            """;
+
     @TempDir
     Path tempDir;
 
@@ -138,14 +148,7 @@ class MainCommandsTest {
         FakeHttp http = new FakeHttp(EB_BASE);
         http.stub("/sessions/sess-eb-1", "{\"status\": \"AUTHORIZED\", \"accounts\": [\"uuid-1\"]}");
         http.stub("/accounts/uuid-1/details", "{\"name\": \"Cuenta Nominas\"}");
-        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", """
-                {"transactions": [
-                  {"entry_reference": "ref-1", "credit_debit_indicator": "CRDT",
-                   "transaction_amount": {"amount": "1200.50", "currency": "EUR"},
-                   "remittance_information": ["Nomina"],
-                   "booking_date": "2026-08-01"}
-                ]}
-                """);
+        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", NOMINA_TRANSACTION_JSON);
         FakeHttp sheets = SheetsTestSupport.fakeHttp();
         stubReadySheet(sheets);
         sheets.stub("/sheet-1/values/E2:E", "{}");
@@ -180,14 +183,7 @@ class MainCommandsTest {
         http.stub("/sessions/sess-eb-1", "{\"status\": \"AUTHORIZED\", \"accounts\": [\"uuid-1\", \"uuid-2\"]}");
         http.stub("/accounts/uuid-1/details", "{\"name\": \"Cuenta Nominas\"}");
         http.stub("/accounts/uuid-2/details", "{\"name\": \"Cuenta Ahorro\"}");
-        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", """
-                {"transactions": [
-                  {"entry_reference": "ref-1", "credit_debit_indicator": "CRDT",
-                   "transaction_amount": {"amount": "1200.50", "currency": "EUR"},
-                   "remittance_information": ["Nomina"],
-                   "booking_date": "2026-08-01"}
-                ]}
-                """);
+        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", NOMINA_TRANSACTION_JSON);
         http.stub("/accounts/uuid-2/transactions?transaction_status=BOOK", """
                 {"transactions": [
                   {"entry_reference": "ref-2", "credit_debit_indicator": "DRDT",
@@ -236,14 +232,7 @@ class MainCommandsTest {
         FakeHttp http = new FakeHttp(EB_BASE);
         http.stub("/sessions/sess-eb-1", "{\"status\": \"AUTHORIZED\", \"accounts\": [\"uuid-1\"]}");
         http.stub("/accounts/uuid-1/details", "{\"name\": \"\"}");
-        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", """
-                {"transactions": [
-                  {"entry_reference": "ref-1", "credit_debit_indicator": "CRDT",
-                   "transaction_amount": {"amount": "1200.50", "currency": "EUR"},
-                   "remittance_information": ["Nomina"],
-                   "booking_date": "2026-08-01"}
-                ]}
-                """);
+        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", NOMINA_TRANSACTION_JSON);
         FakeHttp sheets = SheetsTestSupport.fakeHttp();
         stubReadySheet(sheets);
         sheets.stub("/sheet-1/values/E2:E", "{}");
@@ -308,14 +297,7 @@ class MainCommandsTest {
                 {"status": "AUTHORIZED", "accounts": ["uuid-1"]}
                 """);
         http.stub("/accounts/uuid-1/details", "{\"name\": \"Cuenta Nominas\"}");
-        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", """
-                {"transactions": [
-                  {"entry_reference": "ref-1", "credit_debit_indicator": "CRDT",
-                   "transaction_amount": {"amount": "1200.50", "currency": "EUR"},
-                   "remittance_information": ["Nomina"],
-                   "booking_date": "2026-08-01"}
-                ]}
-                """);
+        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", NOMINA_TRANSACTION_JSON);
         Path stateFile = tempDir.resolve("state.properties");
         Files.writeString(stateFile, "saltedge.connection_id=conn-1\nenablebanking.session_id=sess-eb-1\n");
 
@@ -343,14 +325,7 @@ class MainCommandsTest {
     @Test
     void syncWithSheetsErrorExitsNonZero() throws IOException {
         FakeHttp http = new FakeHttp(EB_BASE);
-        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", """
-                {"transactions": [
-                  {"entry_reference": "ref-1", "credit_debit_indicator": "CRDT",
-                   "transaction_amount": {"amount": "1200.50", "currency": "EUR"},
-                   "remittance_information": ["Nomina"],
-                   "booking_date": "2026-08-01"}
-                ]}
-                """);
+        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", NOMINA_TRANSACTION_JSON);
         FakeHttp sheets = SheetsTestSupport.fakeHttp();
         SheetsTestSupport.stubToken(sheets);
         sheets.stub("/sheet-1/values/E2:E", 403, "{\"error\":{\"message\":\"permission denied\"}}");

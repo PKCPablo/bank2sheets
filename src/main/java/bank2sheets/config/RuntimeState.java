@@ -15,7 +15,7 @@ import java.util.Properties;
  */
 public final class RuntimeState {
 
-    public static final String ENABLE_BANKING_SESSION_ID_KEY = "enablebanking.session_id";
+    private static final String ENABLE_BANKING_SESSION_ID_KEY = "enablebanking.session_id";
 
     private final Path file;
 
@@ -29,17 +29,7 @@ public final class RuntimeState {
 
     /** Reads the persisted Enable Banking session id (null when absent). */
     public String read(String provider) {
-        String key = key(provider);
-        if (!Files.exists(file)) {
-            return null;
-        }
-        try (InputStream in = Files.newInputStream(file)) {
-            Properties props = new Properties();
-            props.load(in);
-            return props.getProperty(key);
-        } catch (IOException e) {
-            throw new IllegalStateException("Cannot read runtime state file " + file, e);
-        }
+        return load().getProperty(key(provider));
     }
 
     /** Saves the session id, preserving any other keys already in the file. */

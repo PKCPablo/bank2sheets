@@ -5,8 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import bank2sheets.Bank2SheetsException;
-import java.util.HashMap;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /** Validation tests for the Enable Banking runtime configuration. */
@@ -38,51 +36,6 @@ class EnableBankingConfigTest {
                 "app-1", KEY, "http://127.0.0.1:8765/bank2sheets/callback",
                 "  Santander  ", "es", "Personal");
         assertEquals("Santander", config.aspspName());
-        assertEquals("ES", config.aspspCountry());
-        assertEquals("personal", config.psuType());
-    }
-
-    @Test
-    void fromEnvReadsTheThreeVariables() {
-        Map<String, String> env = new HashMap<>();
-        env.put("ENABLE_BANKING_APP_ID", "app-env");
-        env.put("ENABLE_BANKING_PRIVATE_KEY_B64", KEY);
-        env.put("ENABLE_BANKING_REDIRECT_URL", "http://localhost:9000/cb");
-
-        EnableBankingConfig config = EnableBankingConfig.fromEnv(env);
-
-        assertEquals("app-env", config.appId());
-        assertEquals(KEY, config.privateKeyB64());
-        assertEquals("http://localhost:9000/cb", config.redirectUrl());
-    }
-
-    @Test
-    void fromEnvReadsTheSixVariables() {
-        Map<String, String> env = new HashMap<>();
-        env.put("ENABLE_BANKING_APP_ID", "app-env");
-        env.put("ENABLE_BANKING_PRIVATE_KEY_B64", KEY);
-        env.put("ENABLE_BANKING_REDIRECT_URL", "http://localhost:9000/cb");
-        env.put("ENABLE_BANKING_ASPSP_NAME", " Santander ");
-        env.put("ENABLE_BANKING_ASPSP_COUNTRY", "fr");
-        env.put("ENABLE_BANKING_PSU_TYPE", "Business");
-
-        EnableBankingConfig config = EnableBankingConfig.fromEnv(env);
-
-        assertEquals("Santander", config.aspspName());
-        assertEquals("FR", config.aspspCountry());
-        assertEquals("business", config.psuType());
-    }
-
-    @Test
-    void fromEnvDefaultsAspspSettingsWhenAbsent() {
-        Map<String, String> env = new HashMap<>();
-        env.put("ENABLE_BANKING_APP_ID", "app-env");
-        env.put("ENABLE_BANKING_PRIVATE_KEY_B64", KEY);
-        env.put("ENABLE_BANKING_REDIRECT_URL", "http://localhost:9000/cb");
-
-        EnableBankingConfig config = EnableBankingConfig.fromEnv(env);
-
-        assertEquals("BBVA", config.aspspName());
         assertEquals("ES", config.aspspCountry());
         assertEquals("personal", config.psuType());
     }

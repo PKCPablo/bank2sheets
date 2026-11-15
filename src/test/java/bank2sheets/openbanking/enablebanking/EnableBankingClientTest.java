@@ -280,27 +280,6 @@ class EnableBankingClientTest {
     }
 
     @Test
-    void listAccountsFallsBackToProductWhenDetailsFail() {
-        FakeHttp http = new FakeHttp(BASE);
-        http.stub("/sessions/sess-1", """
-                {"status": "AUTHORIZED",
-                 "accounts": ["uuid-1", "uuid-2"],
-                 "accounts_data": [
-                   {"uid": "uuid-1", "product": "Cuenta corriente"},
-                   {"uid": "uuid-2", "product": "Cuenta ahorro"}
-                 ]}
-                """);
-        http.responses.put("/accounts/uuid-1/details", new Response(500, "{\"error\": \"boom\"}"));
-        http.responses.put("/accounts/uuid-2/details", new Response(500, "{\"error\": \"boom\"}"));
-        EnableBankingClient client = client(http, () -> "");
-        client.setSessionId("sess-1");
-
-        assertEquals(
-                List.of(new Account("uuid-1", "Cuenta corriente"), new Account("uuid-2", "Cuenta ahorro")),
-                client.listAccounts());
-    }
-
-    @Test
     void bearerTokenIsRebuiltWhenNearExpiry() {
         FakeHttp http = new FakeHttp(BASE);
         http.stub("/sessions/sess-1", "{\"status\": \"AUTHORIZED\"}");
@@ -420,10 +399,6 @@ class EnableBankingClientTest {
     private static EnableBankingConfig config(String name, String country, String psuType) {
         return new EnableBankingConfig("app-1", TestKeys.base64Pem(),
                 "http://127.0.0.1:8765/bank2sheets/callback", name, country, psuType);
-    }
-
-    private static EnableBankingClient client(FakeHttp http, AuthorizationCodeReceiver receiver) {
-        return client(http, receiver, config());
     }
 
     private static EnableBankingClient client(FakeHttp http, AuthorizationCodeReceiver receiver,

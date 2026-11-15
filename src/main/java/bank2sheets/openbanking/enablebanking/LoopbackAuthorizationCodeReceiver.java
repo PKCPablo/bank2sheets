@@ -45,7 +45,7 @@ public final class LoopbackAuthorizationCodeReceiver implements AuthorizationCod
     }
 
     /** The port the listener actually bound to (useful when the redirect URL uses port 0); -1 before binding. */
-    public int boundPort() {
+    int boundPort() {
         return boundPort;
     }
 

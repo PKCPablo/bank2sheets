@@ -4,7 +4,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
-import java.security.PrivateKey;
 import java.util.Base64;
 
 /**
@@ -31,10 +30,6 @@ public final class TestKeys {
 
     public static KeyPair keyPair() {
         return KEY_PAIR;
-    }
-
-    public static PrivateKey privateKey() {
-        return KEY_PAIR.getPrivate();
     }
 
     /** PKCS#8 PEM of the throwaway private key. */

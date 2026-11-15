@@ -160,10 +160,7 @@ public final class Main {
         }
         try {
             TransactionSource source = sources.apply(resolved);
-            Map<String, String> accountNames = new HashMap<>();
-            for (Account account : source.listAccounts()) {
-                accountNames.put(account.id(), account.name());
-            }
+            Map<String, String> accountNames = accountNames(source);
             for (AccountConfig account : resolved.accounts()) {
                 List<Transaction> transactions = source.fetchTransactions(account.providerAccountId());
                 String name = accountNames.getOrDefault(account.providerAccountId(), "");
@@ -227,14 +224,14 @@ public final class Main {
             GoogleSheetsClient sheetsClient = sheets.get();
             Set<String> existing = sheetsClient.existingTransactionIds();
             TransactionSource source = sources.apply(resolved);
-            Map<String, String> accountLabels = new HashMap<>();
-            for (Account account : source.listAccounts()) {
-                accountLabels.put(account.id(), account.name().isBlank() ? account.id() : account.name());
-            }
+            Map<String, String> accountLabels = accountNames(source);
             List<SheetRow> toAppend = new ArrayList<>();
             int fetched = 0;
             for (AccountConfig account : resolved.accounts()) {
-                String label = accountLabels.getOrDefault(account.providerAccountId(), account.providerAccountId());
+                String label = accountLabels.getOrDefault(account.providerAccountId(), "");
+                if (label.isBlank()) {
+                    label = account.providerAccountId();
+                }
                 for (Transaction transaction : source.fetchTransactions(account.providerAccountId())) {
                     fetched++;
                     if (!existing.add(transaction.id())) {
@@ -252,6 +249,15 @@ public final class Main {
             System.err.println("sync: " + e.getMessage());
             return 1;
         }
+    }
+
+    /** Account id -> raw display name, from a single {@code listAccounts()} call. */
+    private static Map<String, String> accountNames(TransactionSource source) {
+        Map<String, String> names = new HashMap<>();
+        for (Account account : source.listAccounts()) {
+            names.put(account.id(), account.name());
+        }
+        return names;
     }
 
     private static String toJson(Transaction transaction) {

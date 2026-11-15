@@ -3,7 +3,6 @@ package bank2sheets.config;
 import bank2sheets.Bank2SheetsException;
 import java.net.URI;
 import java.util.Locale;
-import java.util.Map;
 
 /**
  * Runtime configuration for the Enable Banking adapter, read from environment
@@ -47,20 +46,6 @@ public record EnableBankingConfig(
                 ? "ES" : aspspCountry.trim().toUpperCase(Locale.ROOT);
         psuType = psuType == null || psuType.isBlank()
                 ? "personal" : psuType.trim().toLowerCase(Locale.ROOT);
-    }
-
-    public static EnableBankingConfig fromEnv() {
-        return fromEnv(System.getenv());
-    }
-
-    public static EnableBankingConfig fromEnv(Map<String, String> env) {
-        return new EnableBankingConfig(
-                env.getOrDefault("ENABLE_BANKING_APP_ID", ""),
-                env.getOrDefault("ENABLE_BANKING_PRIVATE_KEY_B64", ""),
-                env.getOrDefault("ENABLE_BANKING_REDIRECT_URL", ""),
-                env.getOrDefault("ENABLE_BANKING_ASPSP_NAME", ""),
-                env.getOrDefault("ENABLE_BANKING_ASPSP_COUNTRY", ""),
-                env.getOrDefault("ENABLE_BANKING_PSU_TYPE", ""));
     }
 
     /** Validates the redirect URL per the two modes described in the class Javadoc. */

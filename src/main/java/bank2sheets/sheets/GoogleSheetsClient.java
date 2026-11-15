@@ -106,15 +106,14 @@ public final class GoogleSheetsClient {
         JsonArray headerRow = readHeaderRow(token);
         if (headerRow == null || !HEADER_VALUES.get(0).equals(stringAt(headerRow, 0))) {
             appendValues(token, toValuesJson(List.of(HEADER_VALUES)));
-        } else if (headerRow.size() < HEADER_VALUES.size()
-                || stringAt(headerRow, HEADER_VALUES.size() - 1).isBlank()) {
-            updateValues(token, "F1", toValuesJson(List.of(List.of(HEADER_VALUES.get(HEADER_VALUES.size() - 1)))));
+        } else if (stringAt(headerRow, HEADER_VALUES.size() - 1).isBlank()) {
+            updateValues(token, "F1", toValuesJson(List.of(List.of(HEADER_VALUES.getLast()))));
         }
         appendValues(token, toValuesJson(rows.stream().map(SheetRow::values).toList()));
     }
 
     /** Serializes rows to the append body: {@code {"values": [[...]]}} with amounts as JSON numbers. */
-    static String toValuesJson(List<List<Object>> rows) {
+    private static String toValuesJson(List<List<Object>> rows) {
         return GSON.toJson(Map.of("values", rows));
     }
 

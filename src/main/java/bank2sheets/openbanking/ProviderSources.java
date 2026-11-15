@@ -24,10 +24,6 @@ public final class ProviderSources {
         if (!"enablebanking".equals(cfg.provider())) {
             throw new Bank2SheetsException("Unsupported provider: " + cfg.provider());
         }
-        return enableBanking(cfg);
-    }
-
-    private static TransactionSource enableBanking(AppConfig cfg) {
         // EnableBankingConfig validates the three credentials and the redirect URL
         // (http loopback for sandbox, https paste fallback for production).
         AuthorizationCodeReceiver receiver = cfg.enableBankingRedirectUrl().toLowerCase().startsWith("https://")

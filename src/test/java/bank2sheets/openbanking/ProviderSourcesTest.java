@@ -19,29 +19,6 @@ class ProviderSourcesTest {
             List.of(new AccountConfig("enablebanking", "SESSION_UUID"));
 
     @Test
-    void enableBankingRequiresAppId() {
-        AppConfig cfg = new AppConfig("", TestKeys.base64Pem(),
-                "http://127.0.0.1:8765/bank2sheets/callback", "", ENABLE_BANKING_ACCOUNTS);
-        Bank2SheetsException ex = assertThrows(Bank2SheetsException.class, () -> ProviderSources.create(cfg));
-        assertTrue(ex.getMessage().contains("ENABLE_BANKING_APP_ID"));
-    }
-
-    @Test
-    void enableBankingRequiresPrivateKey() {
-        AppConfig cfg = new AppConfig("app-1", "",
-                "http://127.0.0.1:8765/bank2sheets/callback", "", ENABLE_BANKING_ACCOUNTS);
-        Bank2SheetsException ex = assertThrows(Bank2SheetsException.class, () -> ProviderSources.create(cfg));
-        assertTrue(ex.getMessage().contains("ENABLE_BANKING_PRIVATE_KEY_B64"));
-    }
-
-    @Test
-    void enableBankingRequiresRedirectUrl() {
-        AppConfig cfg = new AppConfig("app-1", TestKeys.base64Pem(), "", "", ENABLE_BANKING_ACCOUNTS);
-        Bank2SheetsException ex = assertThrows(Bank2SheetsException.class, () -> ProviderSources.create(cfg));
-        assertTrue(ex.getMessage().contains("ENABLE_BANKING_REDIRECT_URL"));
-    }
-
-    @Test
     void enableBankingReturnsClientAndSetsSession() {
         AppConfig cfg = new AppConfig("app-1", TestKeys.base64Pem(),
                 "http://127.0.0.1:8765/bank2sheets/callback", "session-1", ENABLE_BANKING_ACCOUNTS);

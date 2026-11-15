@@ -148,21 +148,11 @@ public final class EnableBankingClient implements TransactionSource {
             throw new Bank2SheetsException(
                     "Enable Banking session response carries no accounts array: " + session);
         }
-        // Name fallback: uid -> product from accounts_data, before the empty fallback.
-        Map<String, String> products = new HashMap<>();
-        if (session.has("accounts_data") && session.get("accounts_data").isJsonArray()) {
-            for (JsonElement data : session.getAsJsonArray("accounts_data")) {
-                JsonObject entry = data.getAsJsonObject();
-                if (entry.has("uid") && !entry.get("uid").isJsonNull()) {
-                    products.put(entry.get("uid").getAsString(), stringOrEmpty(entry, "product"));
-                }
-            }
-        }
         List<Account> accounts = new ArrayList<>();
         // accounts is an array of UUID strings; names come from the details endpoint.
         for (JsonElement element : session.getAsJsonArray("accounts")) {
             String uuid = element.getAsString();
-            accounts.add(new Account(uuid, accountName(uuid, products.getOrDefault(uuid, ""))));
+            accounts.add(new Account(uuid, accountName(uuid)));
         }
         return accounts;
     }
@@ -295,14 +285,12 @@ public final class EnableBankingClient implements TransactionSource {
         return LocalDate.parse(resolvedDate(t));
     }
 
-    /** Display name from the account details endpoint; falls back to product/empty on failure. */
-    private String accountName(String uuid, String fallback) {
+    /** Display name from the account details endpoint; empty on failure (caller falls back to the id). */
+    private String accountName(String uuid) {
         try {
-            JsonObject details = request("GET", "/accounts/" + uuid + "/details", null);
-            String name = stringOrEmpty(details, "name");
-            return name.isBlank() ? fallback : name;
+            return stringOrEmpty(request("GET", "/accounts/" + uuid + "/details", null), "name");
         } catch (Bank2SheetsException e) {
-            return fallback;
+            return "";
         }
     }
 
