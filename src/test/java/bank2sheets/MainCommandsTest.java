@@ -58,7 +58,7 @@ class MainCommandsTest {
                         + " \"maximum_consent_validity\": 15552000}]}");
         http.stub("/auth", "{\"url\": \"https://auth.enablebanking.com/authorize?x=1\"}");
         http.stub("/sessions", "{\"session_id\": \"sess-eb-1\"}");
-        http.stub("/sessions/sess-eb-1", "{\"status\": \"AUTHORIZED\", \"accounts\": []}");
+        stubSession(http, "[]");
         Path stateFile = tempDir.resolve("state.properties");
 
         Result result = runEnableBanking(http, stateFile, enableBankingConfig(""), "connect");
@@ -76,7 +76,7 @@ class MainCommandsTest {
                         + " \"maximum_consent_validity\": 2592000}]}");
         http.stub("/auth", "{\"url\": \"https://auth.enablebanking.com/authorize?x=1\"}");
         http.stub("/sessions", "{\"session_id\": \"sess-eb-1\"}");
-        http.stub("/sessions/sess-eb-1", "{\"status\": \"AUTHORIZED\", \"accounts\": []}");
+        stubSession(http, "[]");
         Path stateFile = tempDir.resolve("state.properties");
         AppConfig santander = new AppConfig("app-1", TestKeys.base64Pem(),
                 "http://127.0.0.1:8765/bank2sheets/callback", "", "Santander", "ES", "personal",
@@ -98,8 +98,8 @@ class MainCommandsTest {
                         + " \"maximum_consent_validity\": 15552000}]}");
         http.stub("/auth", "{\"url\": \"https://auth.enablebanking.com/authorize?x=1\"}");
         http.stub("/sessions", "{\"session_id\": \"sess-eb-1\"}");
-        http.stub("/sessions/sess-eb-1", "{\"status\": \"AUTHORIZED\", \"accounts\": [\"uuid-1\"]}");
-        http.stub("/accounts/uuid-1/details", "{\"name\": \"Cuenta Nominas\"}");
+        stubSession(http, "[\"uuid-1\"]");
+        stubAccountDetails(http, "uuid-1", "Cuenta Nominas");
         Path stateFile = tempDir.resolve("state.properties");
         AppConfig noAccounts = new AppConfig("app-1", TestKeys.base64Pem(),
                 "http://127.0.0.1:8765/bank2sheets/callback", "", List.of());
@@ -116,10 +116,8 @@ class MainCommandsTest {
     @Test
     void enableBankingFetchPrintsNormalizedTransactions() throws IOException {
         FakeHttp http = new FakeHttp(EB_BASE);
-        http.stub("/sessions/sess-eb-1", """
-                {"status": "AUTHORIZED", "accounts": ["uuid-1"]}
-                """);
-        http.stub("/accounts/uuid-1/details", "{\"name\": \"Cuenta Nominas\"}");
+        stubSession(http, "[\"uuid-1\"]");
+        stubAccountDetails(http, "uuid-1", "Cuenta Nominas");
         http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", """
                 {"transactions": [
                   {"entry_reference": "ref-1", "credit_debit_indicator": "CRDT",
@@ -143,8 +141,8 @@ class MainCommandsTest {
     @Test
     void enableBankingSyncAppendsThenIsIdempotent() throws IOException {
         FakeHttp http = new FakeHttp(EB_BASE);
-        http.stub("/sessions/sess-eb-1", "{\"status\": \"AUTHORIZED\", \"accounts\": [\"uuid-1\"]}");
-        http.stub("/accounts/uuid-1/details", "{\"name\": \"Cuenta Nominas\"}");
+        stubSession(http, "[\"uuid-1\"]");
+        stubAccountDetails(http, "uuid-1", "Cuenta Nominas");
         http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", NOMINA_TRANSACTION_JSON);
         FakeHttp sheets = SheetsTestSupport.fakeHttp();
         stubReadySheet(sheets);
@@ -174,9 +172,9 @@ class MainCommandsTest {
     @Test
     void enableBankingSyncLabelsRowsPerAccountAndStaysIdempotent() throws IOException {
         FakeHttp http = new FakeHttp(EB_BASE);
-        http.stub("/sessions/sess-eb-1", "{\"status\": \"AUTHORIZED\", \"accounts\": [\"uuid-1\", \"uuid-2\"]}");
-        http.stub("/accounts/uuid-1/details", "{\"name\": \"Cuenta Nominas\"}");
-        http.stub("/accounts/uuid-2/details", "{\"name\": \"Cuenta Ahorro\"}");
+        stubSession(http, "[\"uuid-1\", \"uuid-2\"]");
+        stubAccountDetails(http, "uuid-1", "Cuenta Nominas");
+        stubAccountDetails(http, "uuid-2", "Cuenta Ahorro");
         http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", NOMINA_TRANSACTION_JSON);
         http.stub("/accounts/uuid-2/transactions?transaction_status=BOOK", """
                 {"transactions": [
@@ -221,8 +219,8 @@ class MainCommandsTest {
     @Test
     void enableBankingSyncFallsBackToAccountIdWhenNameBlank() throws IOException {
         FakeHttp http = new FakeHttp(EB_BASE);
-        http.stub("/sessions/sess-eb-1", "{\"status\": \"AUTHORIZED\", \"accounts\": [\"uuid-1\"]}");
-        http.stub("/accounts/uuid-1/details", "{\"name\": \"\"}");
+        stubSession(http, "[\"uuid-1\"]");
+        stubAccountDetails(http, "uuid-1", "");
         http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", NOMINA_TRANSACTION_JSON);
         FakeHttp sheets = SheetsTestSupport.fakeHttp();
         stubReadySheet(sheets);
@@ -281,10 +279,8 @@ class MainCommandsTest {
     @Test
     void fetchIgnoresLegacySaltEdgeStateKey() throws IOException {
         FakeHttp http = new FakeHttp(EB_BASE);
-        http.stub("/sessions/sess-eb-1", """
-                {"status": "AUTHORIZED", "accounts": ["uuid-1"]}
-                """);
-        http.stub("/accounts/uuid-1/details", "{\"name\": \"Cuenta Nominas\"}");
+        stubSession(http, "[\"uuid-1\"]");
+        stubAccountDetails(http, "uuid-1", "Cuenta Nominas");
         http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", NOMINA_TRANSACTION_JSON);
         Path stateFile = tempDir.resolve("state.properties");
         Files.writeString(stateFile, "saltedge.connection_id=conn-1\nenablebanking.session_id=sess-eb-1\n");
@@ -396,6 +392,17 @@ class MainCommandsTest {
             String state = JsonParser.parseString(authBody).getAsJsonObject().get("state").getAsString();
             return "https://cb?code=the-code&state=" + state;
         };
+    }
+
+    /** Stubs the session response with the given JSON array of account ids. */
+    private static void stubSession(FakeHttp http, String accountsJson) {
+        http.stub("/sessions/sess-eb-1",
+                "{\"status\": \"AUTHORIZED\", \"accounts\": " + accountsJson + "}");
+    }
+
+    /** Stubs the account-details response for one account id. */
+    private static void stubAccountDetails(FakeHttp http, String uuid, String name) {
+        http.stub("/accounts/" + uuid + "/details", "{\"name\": \"" + name + "\"}");
     }
 
     /** Stubs a Sheets backend with a valid token, the header row, an empty id column, and a successful append. */

@@ -1,6 +1,7 @@
 package bank2sheets.config;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -53,15 +54,10 @@ class AppConfigTest {
     }
 
     @Test
-    void rejectsSaltEdgeProvider() {
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> AppConfig.parseAccounts("saltedge:acct-1"));
-        assertEquals("Unsupported provider: saltedge", error.getMessage());
-    }
-
-    @Test
     void rejectsUnsupportedProvider() {
-        assertThrows(IllegalArgumentException.class, () -> AppConfig.parseAccounts("powens:uuid-1"));
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> AppConfig.parseAccounts("powens:uuid-1"));
+        assertEquals("Unsupported provider: powens", error.getMessage());
     }
 
     @Test
@@ -71,18 +67,12 @@ class AppConfigTest {
     }
 
     @Test
-    void providerDoesNotInferSaltEdgeFromLegacyCredentials() {
-        assertThrows(Bank2SheetsException.class,
-                () -> AppConfig.fromEnv(Map.of("SALTEDGE_APP_ID", "app-1")).provider());
-    }
-
-    @Test
     void providerFailsWithoutAccountsOrCredentials() {
         Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
                 () -> AppConfig.fromEnv(Map.of()).provider());
         assertTrue(error.getMessage().contains("BANK2SHEETS_ACCOUNTS"));
         assertTrue(error.getMessage().contains("ENABLE_BANKING_APP_ID"));
-        assertTrue(!error.getMessage().contains("SALTEDGE_APP_ID"));
+        assertFalse(error.getMessage().contains("SALTEDGE_APP_ID"));
     }
 
     @Test
