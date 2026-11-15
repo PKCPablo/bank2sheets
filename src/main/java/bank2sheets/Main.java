@@ -26,8 +26,8 @@ import java.util.function.Supplier;
  *
  * <p>Dispatch plus the {@code connect}/{@code fetch}/{@code sync} commands live
  * here. Credentials are read from the environment at runtime, never stored in
- * the repository. Only the provider connection/session id is persisted (Salt Edge
- * connection id or Enable Banking session id), in a gitignored runtime state file.
+ * the repository. Only the Enable Banking session id is persisted, in a
+ * gitignored runtime state file.
  */
 public final class Main {
 
@@ -43,15 +43,12 @@ public final class Main {
               help      Show this help
 
             Configuration is read from environment variables at runtime.
-            Enable Banking (default provider):
+            Enable Banking:
               ENABLE_BANKING_APP_ID, ENABLE_BANKING_PRIVATE_KEY_B64, ENABLE_BANKING_REDIRECT_URL
               ENABLE_BANKING_SESSION_ID (optional once `connect` has run)
-            Salt Edge (selectable fallback):
-              SALTEDGE_APP_ID, SALTEDGE_SECRET, SALTEDGE_CUSTOMER_ID
-              SALTEDGE_CONNECTION_ID (optional once `connect` has run)
             Shared:
               BANK2SHEETS_ACCOUNTS  comma-separated provider:accountId entries
-                                    (e.g. enablebanking:<uuid> or saltedge:ACCT_ID);
+                                    (e.g. enablebanking:<uuid>);
                                     all entries must use one provider
               GOOGLE_SERVICE_ACCOUNT_B64, GOOGLE_SPREADSHEET_ID (required for `sync`)
             """;
@@ -137,7 +134,7 @@ public final class Main {
             state.save(provider, connectionId);
             System.out.println("Connected. Connection id " + connectionId + " saved to " + state.file());
             try {
-                TransactionSource connected = sources.apply(cfg.withProviderState(provider, connectionId));
+                TransactionSource connected = sources.apply(cfg.withProviderState(connectionId));
                 System.out.println("Available accounts:");
                 for (Account account : connected.listAccounts()) {
                     System.out.println("  " + account.id() + (account.name().isBlank() ? "" : " (" + account.name() + ")"));
@@ -188,7 +185,7 @@ public final class Main {
             return cfg;
         }
         String stored = state.read(provider);
-        return stored == null ? cfg : cfg.withProviderState(provider, stored);
+        return stored == null ? cfg : cfg.withProviderState(stored);
     }
 
     /**
@@ -200,14 +197,12 @@ public final class Main {
         AppConfig cfg = config.get();
         if (cfg.accounts().isEmpty()) {
             System.err.println(command + ": no accounts configured; set BANK2SHEETS_ACCOUNTS "
-                    + "(e.g. enablebanking:<uuid> or saltedge:ACCT_ID)");
+                    + "(e.g. enablebanking:<uuid>)");
             return null;
         }
         AppConfig resolved = withProviderState(cfg);
         if (resolved.providerId().isBlank()) {
-            String hint = "enablebanking".equals(resolved.provider())
-                    ? "ENABLE_BANKING_SESSION_ID" : "SALTEDGE_CONNECTION_ID";
-            System.err.println(command + ": no connection; run `connect` once or set " + hint);
+            System.err.println(command + ": no connection; run `connect` once or set ENABLE_BANKING_SESSION_ID");
             return null;
         }
         return resolved;

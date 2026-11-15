@@ -11,13 +11,9 @@ import java.util.Map;
  * variable names are documented in the README configuration table.
  *
  * <p>{@code BANK2SHEETS_ACCOUNTS} holds comma-separated {@code provider:accountId}
- * entries; all entries must share one provider.
+ * entries; all entries must use the {@code enablebanking} provider.
  */
 public record AppConfig(
-        String saltEdgeAppId,
-        String saltEdgeSecret,
-        String saltEdgeCustomerId,
-        String saltEdgeConnectionId,
         String enableBankingAppId,
         String enableBankingPrivateKeyB64,
         String enableBankingRedirectUrl,
@@ -28,38 +24,20 @@ public record AppConfig(
         accounts = List.copyOf(accounts);
     }
 
-    /** Five-argument convenience constructor defaulting the Enable Banking fields to blank. */
-    public AppConfig(String saltEdgeAppId, String saltEdgeSecret, String saltEdgeCustomerId,
-            String saltEdgeConnectionId, List<AccountConfig> accounts) {
-        this(saltEdgeAppId, saltEdgeSecret, saltEdgeCustomerId, saltEdgeConnectionId,
-                "", "", "", "", accounts);
-    }
-
     public static AppConfig fromEnv() {
         return fromEnv(System.getenv());
     }
 
-    /**
-     * Returns a copy with the provider's connection/session id replaced
-     * (used to merge persisted state); unknown providers are returned as-is.
-     */
-    public AppConfig withProviderState(String provider, String id) {
-        return switch (provider) {
-            case "saltedge" -> new AppConfig(saltEdgeAppId, saltEdgeSecret, saltEdgeCustomerId, id,
-                    enableBankingAppId, enableBankingPrivateKeyB64, enableBankingRedirectUrl,
-                    enableBankingSessionId, accounts);
-            case "enablebanking" -> new AppConfig(saltEdgeAppId, saltEdgeSecret, saltEdgeCustomerId,
-                    saltEdgeConnectionId, enableBankingAppId, enableBankingPrivateKeyB64,
-                    enableBankingRedirectUrl, id, accounts);
-            default -> this;
-        };
+    /** Returns a copy with the persisted Enable Banking session id replaced. */
+    public AppConfig withProviderState(String sessionId) {
+        return new AppConfig(enableBankingAppId, enableBankingPrivateKeyB64,
+                enableBankingRedirectUrl, sessionId, accounts);
     }
 
     /**
      * The provider to use: the first entry of {@code BANK2SHEETS_ACCOUNTS} when
-     * accounts are configured, otherwise inferred from credentials (Enable
-     * Banking wins when both credential sets are present). Throws when neither
-     * accounts nor any provider credentials are configured.
+     * accounts are configured, otherwise inferred from the Enable Banking
+     * credentials. Throws when neither accounts nor credentials are configured.
      */
     public String provider() {
         if (!accounts.isEmpty()) {
@@ -68,22 +46,14 @@ public record AppConfig(
         if (!enableBankingAppId.isBlank()) {
             return "enablebanking";
         }
-        if (!saltEdgeAppId.isBlank()) {
-            return "saltedge";
-        }
         throw new Bank2SheetsException(
                 "no accounts or provider credentials configured; set BANK2SHEETS_ACCOUNTS "
-                        + "(e.g. saltedge:ACCT_ID or enablebanking:<uuid>), or provider credentials "
-                        + "(ENABLE_BANKING_APP_ID or SALTEDGE_APP_ID)");
+                        + "(e.g. enablebanking:<uuid>), or provider credentials (ENABLE_BANKING_APP_ID)");
     }
 
-    /** The connection/session id field of the configured provider (blank when unset). */
+    /** The Enable Banking session id field (blank when unset). */
     public String providerId() {
-        return switch (provider()) {
-            case "saltedge" -> saltEdgeConnectionId;
-            case "enablebanking" -> enableBankingSessionId;
-            default -> "";
-        };
+        return enableBankingSessionId;
     }
 
     /** Enable Banking credentials validated by {@link EnableBankingConfig} (throws when blank). */
@@ -93,10 +63,6 @@ public record AppConfig(
 
     static AppConfig fromEnv(Map<String, String> env) {
         return new AppConfig(
-                env.getOrDefault("SALTEDGE_APP_ID", ""),
-                env.getOrDefault("SALTEDGE_SECRET", ""),
-                env.getOrDefault("SALTEDGE_CUSTOMER_ID", ""),
-                env.getOrDefault("SALTEDGE_CONNECTION_ID", ""),
                 env.getOrDefault("ENABLE_BANKING_APP_ID", ""),
                 env.getOrDefault("ENABLE_BANKING_PRIVATE_KEY_B64", ""),
                 env.getOrDefault("ENABLE_BANKING_REDIRECT_URL", ""),
@@ -106,8 +72,7 @@ public record AppConfig(
 
     /**
      * Parses {@code provider:accountId} entries separated by commas. Empty
-     * entries are ignored; malformed entries, unsupported providers, and mixed
-     * providers in one list fail fast.
+     * entries are ignored; malformed entries and unsupported providers fail fast.
      */
     static List<AccountConfig> parseAccounts(String raw) {
         List<AccountConfig> accounts = new ArrayList<>();
@@ -123,13 +88,8 @@ public record AppConfig(
             }
             String provider = trimmed.substring(0, colon);
             String accountId = trimmed.substring(colon + 1);
-            if (!"saltedge".equals(provider) && !"enablebanking".equals(provider)) {
+            if (!"enablebanking".equals(provider)) {
                 throw new IllegalArgumentException("Unsupported provider: " + provider);
-            }
-            if (!accounts.isEmpty() && !accounts.get(0).provider().equals(provider)) {
-                throw new IllegalArgumentException(
-                        "BANK2SHEETS_ACCOUNTS mixes providers (" + accounts.get(0).provider() + " and "
-                                + provider + "); all entries must use one provider per invocation");
             }
             accounts.add(new AccountConfig(provider, accountId));
         }

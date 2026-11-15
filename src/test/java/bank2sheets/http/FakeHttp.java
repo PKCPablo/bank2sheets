@@ -7,24 +7,18 @@ import java.util.Map;
 
 /**
  * In-memory HTTP stub keyed by path + query, recording every request. Shared
- * HTTP stub for the Sheets, Enable Banking, Main command, and (until deletion)
- * Salt Edge tests; the sheets tests reuse it through a base-URL override
- * ({@link #FakeHttp(String)}); no real network calls.
+ * HTTP stub for the Sheets, Enable Banking, and Main command tests; the Sheets
+ * tests pass {@code GOOGLE_BASE} and the Enable Banking tests pass their API
+ * base ({@link #FakeHttp(String)}); no real network calls.
  */
 public class FakeHttp implements HttpExchange {
-
-    public static final String BASE = "https://www.saltedge.com/api/v6";
 
     public final Map<String, Response> responses = new HashMap<>();
     public final List<Request> requests = new ArrayList<>();
 
     private final String base;
 
-    public FakeHttp() {
-        this(BASE);
-    }
-
-    /** Override for a non-Salt-Edge base; URLs not starting with the base are keyed by full URL. */
+    /** URLs starting with the base are keyed by the remainder; others by full URL. */
     public FakeHttp(String base) {
         this.base = base;
     }

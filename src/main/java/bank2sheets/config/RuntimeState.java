@@ -9,14 +9,12 @@ import java.util.Properties;
 
 /**
  * Runtime-only state persisted next to the repository (gitignored). Holds the
- * one-time Salt Edge connection id and the Enable Banking session id written by
- * the {@code connect} command — never credentials or bank tokens. Each
- * provider's key is read/written independently so saving one never clobbers the
- * other.
+ * Enable Banking session id written by the {@code connect} command — never
+ * credentials or bank tokens. Legacy keys from removed providers are preserved
+ * on save but never read.
  */
 public final class RuntimeState {
 
-    public static final String SALTEDGE_CONNECTION_ID_KEY = "saltedge.connection_id";
     public static final String ENABLE_BANKING_SESSION_ID_KEY = "enablebanking.session_id";
 
     private final Path file;
@@ -29,21 +27,22 @@ public final class RuntimeState {
         return file;
     }
 
-    /** Reads the provider's persisted id (Salt Edge connection id / Enable Banking session id). */
+    /** Reads the persisted Enable Banking session id (null when absent). */
     public String read(String provider) {
+        String key = key(provider);
         if (!Files.exists(file)) {
             return null;
         }
         try (InputStream in = Files.newInputStream(file)) {
             Properties props = new Properties();
             props.load(in);
-            return props.getProperty(key(provider));
+            return props.getProperty(key);
         } catch (IOException e) {
             throw new IllegalStateException("Cannot read runtime state file " + file, e);
         }
     }
 
-    /** Saves the provider's id, preserving the other provider's key in the same file. */
+    /** Saves the session id, preserving any other keys already in the file. */
     public void save(String provider, String id) {
         Properties props = load();
         props.setProperty(key(provider), id);
@@ -68,10 +67,9 @@ public final class RuntimeState {
     }
 
     private static String key(String provider) {
-        return switch (provider) {
-            case "saltedge" -> SALTEDGE_CONNECTION_ID_KEY;
-            case "enablebanking" -> ENABLE_BANKING_SESSION_ID_KEY;
-            default -> throw new IllegalArgumentException("Unknown provider: " + provider);
-        };
+        if ("enablebanking".equals(provider)) {
+            return ENABLE_BANKING_SESSION_ID_KEY;
+        }
+        throw new IllegalArgumentException("Unknown provider: " + provider);
     }
 }
