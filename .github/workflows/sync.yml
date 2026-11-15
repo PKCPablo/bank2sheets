@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   sync:
-    if: github.repository == 'PKCPablo/bank2sheets'
+    # Runs in the upstream repo; forks must enable Actions and add the secrets below.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
