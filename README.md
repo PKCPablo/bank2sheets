@@ -1,12 +1,12 @@
 # bank2sheets
 
-bank2sheets is a personal Java 21 command-line job that uses Open Banking to fetch transactions from a bank account (BBVA via Enable Banking) and syncs them idempotently to a Google Sheets spreadsheet. It runs on demand, never stores bank credentials, and stays minimal: no frontend, no database.
+bank2sheets is a personal Java 21 command-line job that uses Open Banking to fetch transactions from a bank account (BBVA Spain by default, via Enable Banking) and syncs them idempotently to a Google Sheets spreadsheet. It runs on demand, never stores bank credentials, and stays minimal: no frontend, no database.
 
 ## Requirements
 
 - Java 21 (JDK) and Maven 3.9.9
 - A Google account (for the Cloud project and spreadsheet)
-- BBVA online banking access (you will complete an SCA authorization in the browser)
+- Online banking access for the ASPSP you link (BBVA Spain by default; you will complete an SCA authorization in the browser)
 - Optional: OpenSSL, only if your Enable Banking key is PKCS#1 (`-----BEGIN RSA PRIVATE KEY-----`) instead of PKCS#8
 
 Windows PowerShell is the documented path; all commands below are PowerShell. For a guided, ordered walkthrough from fork to first sync, see [Set up from scratch](#set-up-from-scratch).
@@ -37,6 +37,8 @@ The test run confirms your toolchain (JDK 21 + Maven) and ends with `BUILD SUCCE
 6. Register. This downloads `<app-id>.pem` (your private key) and shows the application id you will put in `ENABLE_BANKING_APP_ID`.
 
 > **Sandbox instead?** Enable Banking's sandbox environment uses fake bank data (not real transactions) and accepts the loopback redirect `http://127.0.0.1:8765/bank2sheets/callback`. The rest of this walkthrough is identical.
+
+> **Using another bank?** This walkthrough uses BBVA Spain, the default ASPSP. To use a different bank, link that account in the Enable Banking control panel and set `ENABLE_BANKING_ASPSP_NAME`, `ENABLE_BANKING_ASPSP_COUNTRY`, and `ENABLE_BANKING_PSU_TYPE` (see [Configuration](#configuration)); the name must match the ASPSP name shown in Enable Banking.
 
 ### 3. Register a redirect URL the CLI accepts
 
@@ -87,7 +89,7 @@ Or copy the tracked `.env.example` to `.env` and fill in the values.
 .\scripts\run.ps1 connect
 ```
 
-Open the printed authorization URL in a browser and complete the BBVA SCA authorization. With a loopback redirect the callback is captured automatically (the listener is bound before the URL is printed; 5-minute timeout). With an `https` redirect the CLI prints a paste prompt: copy the full callback URL from your callback page (e.g. `docs/callback.html` served from your Pages site) and paste it.
+Open the printed authorization URL in a browser and complete your bank's SCA authorization. With a loopback redirect the callback is captured automatically (the listener is bound before the URL is printed; 5-minute timeout). With an `https` redirect the CLI prints a paste prompt: copy the full callback URL from your callback page (e.g. `docs/callback.html` served from your Pages site) and paste it.
 
 Expected output ends with something like:
 
@@ -183,7 +185,7 @@ If the JAR is missing, the runner prints the build instruction (`.\scripts\mvn.p
 
 Subcommands:
 
-- `connect` — one-time AIS-only consent. Prints the provider authorization URL; after you complete the BBVA authorization (SCA) in the browser and press Enter, it stores the session id in `bank2sheets-state.properties` (gitignored). An `http` loopback redirect is captured automatically (the listener is bound before the URL is printed); an `https` redirect (production Pages page) prints a paste prompt after you press Enter. It then prints the available accounts (id + name); copy an id into `BANK2SHEETS_ACCOUNTS` for `fetch`/`sync`. With no `BANK2SHEETS_ACCOUNTS`, `connect` infers the provider from credentials.
+- `connect` — one-time AIS-only consent. Prints the provider authorization URL; after you complete the configured bank's authorization (SCA) in the browser and press Enter, it stores the session id in `bank2sheets-state.properties` (gitignored). An `http` loopback redirect is captured automatically (the listener is bound before the URL is printed); an `https` redirect (production Pages page) prints a paste prompt after you press Enter. It then prints the available accounts (id + name); copy an id into `BANK2SHEETS_ACCOUNTS` for `fetch`/`sync`. With no `BANK2SHEETS_ACCOUNTS`, `connect` infers the provider from credentials.
 - `fetch` — lists the configured accounts and prints their transactions as one JSON object per line.
 - `sync` — fetch transactions and append the new ones to Google Sheets; idempotent, so a second run appends nothing
 - `help` — show usage
@@ -199,11 +201,14 @@ Real credentials are provided at runtime via environment variables and are never
 | `ENABLE_BANKING_PRIVATE_KEY_B64` | Base64-encoded PKCS#8 PEM private key for the Enable Banking application (secret) |
 | `ENABLE_BANKING_REDIRECT_URL` | Registered redirect URL: `http` loopback for sandbox (`http://127.0.0.1:8765/bank2sheets/callback`, explicit port/path) or `https` for production (e.g. `https://pkcpablo.github.io/bank2sheets/callback.html`; the CLI then prompts you to paste the callback URL) |
 | `ENABLE_BANKING_SESSION_ID` | Optional; `connect` persists it to `bank2sheets-state.properties` as `enablebanking.session_id` |
+| `ENABLE_BANKING_ASPSP_NAME` | Optional ASPSP selection; default `BBVA`. Must match the ASPSP name shown in Enable Banking (trimmed) |
+| `ENABLE_BANKING_ASPSP_COUNTRY` | Optional ASPSP country; default `ES` (ISO 3166 alpha-2, uppercased) |
+| `ENABLE_BANKING_PSU_TYPE` | Optional PSU type; default `personal` (lowercased) |
 | `BANK2SHEETS_ACCOUNTS` | Comma-separated `provider:accountId` entries; `enablebanking:<uuid>`; all entries must use one provider per run |
 | `GOOGLE_SERVICE_ACCOUNT_B64` | Base64-encoded Google service account JSON (`client_email` + `private_key`) with edit access to the target spreadsheet; required for `sync` |
 | `GOOGLE_SPREADSHEET_ID` | Id of the target spreadsheet (shared with the service account email); required for `sync` |
 
-Enable Banking uses the Open Banking Gateway API (`https://api.enablebanking.com`) with an RS256 JWT built from `ENABLE_BANKING_APP_ID` and the private key. It runs in the free restricted-production mode: personal, non-commercial use only, and only the accounts you link in the Enable Banking control panel are accessible. ASPSP rate limits apply (bank-specific, commonly a few background fetches per day) and sessions expire after an ASPSP-dependent validity period (commonly up to ~180 days); when that happens, run `connect` again to re-authorise with a fresh SCA. During `connect`, an `http://127.0.0.1` redirect uses a local loopback listener (bound before the URL is printed, 5-minute timeout). An `https://` redirect (production) uses the static callback page in `docs/callback.html`, served at `https://pkcpablo.github.io/bank2sheets/callback.html`; the CLI prompts you to paste the full callback URL from the browser.
+Enable Banking uses the Open Banking Gateway API (`https://api.enablebanking.com`) with an RS256 JWT built from `ENABLE_BANKING_APP_ID` and the private key. It runs in the free restricted-production mode: personal, non-commercial use only, and only the accounts you link in the Enable Banking control panel are accessible. ASPSP selection is configurable via the three optional `ENABLE_BANKING_ASPSP_*`/`ENABLE_BANKING_PSU_TYPE` variables (defaults: BBVA / ES / personal); BBVA Spain remains the validated target, and other ASPSPs are configurable but not owner-validated. ASPSP rate limits apply (bank-specific, commonly a few background fetches per day) and sessions expire after an ASPSP-dependent validity period (commonly up to ~180 days); when that happens, run `connect` again to re-authorise with a fresh SCA. During `connect`, an `http://127.0.0.1` redirect uses a local loopback listener (bound before the URL is printed, 5-minute timeout). An `https://` redirect (production) uses the static callback page in `docs/callback.html`, served at `https://pkcpablo.github.io/bank2sheets/callback.html`; the CLI prompts you to paste the full callback URL from the browser.
 
 Example (PowerShell):
 

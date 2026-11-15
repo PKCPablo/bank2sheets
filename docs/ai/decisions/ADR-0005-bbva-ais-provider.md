@@ -171,6 +171,10 @@ The Enable Banking adapter is validated in production with real BBVA (`fetch` 17
 
 GitHub issue #7 removed the Salt Edge fallback code: `SaltEdgeClient`/`SaltEdgeException` and their tests are deleted, `enablebanking` is the only accepted provider (unsupported providers fail fast), the `SALTEDGE_*` env contract is gone, and `bank2sheets-state.properties` holds only `enablebanking.session_id` (a legacy `saltedge.connection_id` may persist in existing state files, is never read, and no migration runs). The 2026-11-14 wording above ("scheduled for removal in GitHub issue #7", "remained in the tree until the adapter landed", "code removal is tracked in GitHub issue #7") is now landed/closed. The historical evidence, matrix, and risks above are kept unchanged.
 
+## Amendment (2026-11-15) — ASPSP selection parameterized
+
+The Enable Banking client no longer hardcodes BBVA/ES/personal: three optional environment variables (`ENABLE_BANKING_ASPSP_NAME`, default `BBVA`; `ENABLE_BANKING_ASPSP_COUNTRY`, default `ES`; `ENABLE_BANKING_PSU_TYPE`, default `personal`) select the ASPSP for the `/aspsps` lookup and `/auth` flow. BBVA Spain remains the validated/default target (the 2026-11-14 production evidence above is unchanged); other ASPSPs are configurable but not validated by the owner. The restricted-production constraints (personal, non-commercial, linked accounts only, ASPSP rate limits, session renewal) and the provider decision itself are unchanged. Implemented by `plans/2026-11-15_183741-enable-banking-aspsp-parameterization.md` / GitHub issue #14.
+
 ## Risks (accepted)
 
 - Restricted mode only exposes the specific accounts the owner links; linking is per-account and once linked, only those accounts are returned.
