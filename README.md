@@ -77,6 +77,8 @@ ENABLE_BANKING_PRIVATE_KEY_B64=<base64 PKCS#8 PEM from step 4>
 ENABLE_BANKING_REDIRECT_URL=<the redirect URL you registered in step 3>
 ```
 
+Or copy the tracked `.env.example` to `.env` and fill in the values.
+
 `.env` is gitignored and `run.ps1` loads it without printing values. See [Configuration](#configuration) for the full variable table.
 
 ### 6. Run `connect` and capture the account id
