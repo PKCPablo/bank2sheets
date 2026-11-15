@@ -44,9 +44,6 @@ import java.util.function.LongSupplier;
 public final class EnableBankingClient implements TransactionSource {
 
     private static final String BASE_URL = "https://api.enablebanking.com";
-    private static final String ASPSP_NAME = "BBVA";
-    private static final String ASPSP_COUNTRY = "ES";
-    private static final String PSU_TYPE = "personal";
     private static final long JWT_TTL_SECONDS = 3600;
     /** Fallback consent validity in seconds (90 days) when the ASPSP does not report one. */
     private static final long DEFAULT_CONSENT_VALIDITY_SECONDS = 90 * 86400;
@@ -80,23 +77,23 @@ public final class EnableBankingClient implements TransactionSource {
 
     @Override
     public String connect() {
-        JsonObject bbva = findBbva();
+        JsonObject listed = findAspsp();
         // maximum_consent_validity is in seconds (e.g. 15552000 = 180 days).
-        long validitySeconds = bbva.has("maximum_consent_validity")
-                ? bbva.get("maximum_consent_validity").getAsLong() : DEFAULT_CONSENT_VALIDITY_SECONDS;
+        long validitySeconds = listed.has("maximum_consent_validity")
+                ? listed.get("maximum_consent_validity").getAsLong() : DEFAULT_CONSENT_VALIDITY_SECONDS;
         pendingState = UUID.randomUUID().toString();
 
         JsonObject access = new JsonObject();
         access.addProperty("valid_until", now().plusSeconds(validitySeconds).toString());
         JsonObject aspsp = new JsonObject();
-        aspsp.addProperty("name", ASPSP_NAME);
-        aspsp.addProperty("country", ASPSP_COUNTRY);
+        aspsp.addProperty("name", config.aspspName());
+        aspsp.addProperty("country", config.aspspCountry());
         JsonObject body = new JsonObject();
         body.add("access", access);
         body.add("aspsp", aspsp);
         body.addProperty("redirect_url", config.redirectUrl());
         body.addProperty("state", pendingState);
-        body.addProperty("psu_type", PSU_TYPE);
+        body.addProperty("psu_type", config.psuType());
 
         JsonObject result = request("POST", "/auth", body.toString());
         String url = result.get("url").getAsString();
@@ -309,18 +306,25 @@ public final class EnableBankingClient implements TransactionSource {
         }
     }
 
-    private JsonObject findBbva() {
-        JsonObject result = request("GET", "/aspsps?country=" + ASPSP_COUNTRY
-                + "&psu_type=" + PSU_TYPE + "&service=AIS", null);
+    /** Looks up the configured ASPSP via {@code GET /aspsps}; fails fast when it is not listed. */
+    private JsonObject findAspsp() {
+        JsonObject result = request("GET", "/aspsps?country="
+                + encode(config.aspspCountry()) + "&psu_type=" + encode(config.psuType())
+                + "&service=AIS", null);
         for (JsonElement element : result.getAsJsonArray("aspsps")) {
             JsonObject aspsp = element.getAsJsonObject();
-            if (ASPSP_NAME.equals(stringOrEmpty(aspsp, "name"))
-                    && ASPSP_COUNTRY.equals(stringOrEmpty(aspsp, "country"))) {
+            if (config.aspspName().equals(stringOrEmpty(aspsp, "name"))
+                    && config.aspspCountry().equals(stringOrEmpty(aspsp, "country"))) {
                 return aspsp;
             }
         }
-        throw new Bank2SheetsException("Enable Banking lists no " + ASPSP_NAME + " ASPSP in "
-                + ASPSP_COUNTRY + " for " + PSU_TYPE + " AIS");
+        throw new Bank2SheetsException("Enable Banking lists no " + config.aspspName() + " ASPSP in "
+                + config.aspspCountry() + " for " + config.psuType() + " AIS");
+    }
+
+    /** URL-encodes a query value (UTF-8), so names with spaces stay valid. */
+    private static String encode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
     private String configSessionId() {

@@ -46,6 +46,8 @@ public final class Main {
             Enable Banking:
               ENABLE_BANKING_APP_ID, ENABLE_BANKING_PRIVATE_KEY_B64, ENABLE_BANKING_REDIRECT_URL
               ENABLE_BANKING_SESSION_ID (optional once `connect` has run)
+              ENABLE_BANKING_ASPSP_NAME, ENABLE_BANKING_ASPSP_COUNTRY, ENABLE_BANKING_PSU_TYPE
+                                    (optional bank selection; default BBVA/ES/personal)
             Shared:
               BANK2SHEETS_ACCOUNTS  comma-separated provider:accountId entries
                                     (e.g. enablebanking:<uuid>);
@@ -120,7 +122,7 @@ public final class Main {
             String provider = cfg.provider();
             TransactionSource source = sources.apply(cfg);
             String connectUrl = source.connect();
-            System.out.println("Open this URL in your browser and authorize BBVA (read-only consent):");
+            System.out.println("Open this URL in your browser and authorize your bank (read-only consent):");
             System.out.println();
             System.out.println("  " + connectUrl);
             System.out.println();

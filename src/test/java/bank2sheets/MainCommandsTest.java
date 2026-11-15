@@ -61,6 +61,28 @@ class MainCommandsTest {
     }
 
     @Test
+    void enableBankingConnectUsesConfiguredAspsp() throws IOException {
+        FakeHttp http = new FakeHttp(EB_BASE);
+        http.stub("/aspsps?country=ES&psu_type=personal&service=AIS",
+                "{\"aspsps\": [{\"name\": \"Santander\", \"country\": \"ES\","
+                        + " \"maximum_consent_validity\": 2592000}]}");
+        http.stub("/auth", "{\"url\": \"https://auth.enablebanking.com/authorize?x=1\"}");
+        http.stub("/sessions", "{\"session_id\": \"sess-eb-1\"}");
+        http.stub("/sessions/sess-eb-1", "{\"status\": \"AUTHORIZED\", \"accounts\": []}");
+        Path stateFile = tempDir.resolve("state.properties");
+        AppConfig santander = new AppConfig("app-1", TestKeys.base64Pem(),
+                "http://127.0.0.1:8765/bank2sheets/callback", "", "Santander", "ES", "personal",
+                List.of(new AccountConfig("enablebanking", "uuid-1")));
+
+        Result result = runEnableBanking(http, stateFile, santander, "connect");
+
+        assertEquals(0, result.exitCode());
+        assertEquals(EB_BASE + "/aspsps?country=ES&psu_type=personal&service=AIS",
+                http.requests.get(0).url());
+        assertTrue(Files.readString(stateFile).contains("enablebanking.session_id=sess-eb-1"));
+    }
+
+    @Test
     void enableBankingConnectWithoutAccountsListsAvailableAccounts() throws IOException {
         FakeHttp http = new FakeHttp(EB_BASE);
         http.stub("/aspsps?country=ES&psu_type=personal&service=AIS",

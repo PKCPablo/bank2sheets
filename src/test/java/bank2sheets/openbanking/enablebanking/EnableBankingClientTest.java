@@ -413,7 +413,80 @@ class EnableBankingClientTest {
     }
 
     private static EnableBankingConfig config() {
-        return new EnableBankingConfig("app-1", TestKeys.base64Pem(), "http://127.0.0.1:8765/bank2sheets/callback");
+        return config("", "", "");
+    }
+
+    /** Config with explicit ASPSP settings; blank values default to BBVA/ES/personal. */
+    private static EnableBankingConfig config(String name, String country, String psuType) {
+        return new EnableBankingConfig("app-1", TestKeys.base64Pem(),
+                "http://127.0.0.1:8765/bank2sheets/callback", name, country, psuType);
+    }
+
+    private static EnableBankingClient client(FakeHttp http, AuthorizationCodeReceiver receiver) {
+        return client(http, receiver, config());
+    }
+
+    private static EnableBankingClient client(FakeHttp http, AuthorizationCodeReceiver receiver,
+            EnableBankingConfig config) {
+        return new EnableBankingClient(config, http, receiver, () -> NOW);
+    }
+
+    @Test
+    void connectUsesConfiguredAspsp() {
+        FakeHttp http = new FakeHttp(BASE);
+        http.stub("/aspsps?country=ES&psu_type=personal&service=AIS", """
+                {"aspsps": [
+                  {"name": "Santander", "country": "ES", "maximum_consent_validity": 2592000},
+                  {"name": "BBVA", "country": "ES", "maximum_consent_validity": 15552000}
+                ]}
+                """);
+        http.stub("/auth", "{\"url\": \"https://auth.enablebanking.com/authorize?x=1\"}");
+        EnableBankingClient client = client(http, () -> "", config("Santander", "ES", "personal"));
+
+        client.connect();
+
+        assertEquals(BASE + "/aspsps?country=ES&psu_type=personal&service=AIS",
+                http.requests.get(0).url());
+        JsonObject body = JsonParser.parseString(http.requests.get(1).body()).getAsJsonObject();
+        assertEquals("Santander", body.getAsJsonObject("aspsp").get("name").getAsString());
+        assertEquals("ES", body.getAsJsonObject("aspsp").get("country").getAsString());
+        assertEquals("personal", body.get("psu_type").getAsString());
+        // maximum_consent_validity is in seconds (2592000 = 30 days).
+        String expectedValidUntil = Instant.ofEpochSecond(NOW).plusSeconds(2592000).toString();
+        assertEquals(expectedValidUntil, body.getAsJsonObject("access").get("valid_until").getAsString());
+    }
+
+    @Test
+    void connectUsesConfiguredCountryAndPsuType() {
+        FakeHttp http = new FakeHttp(BASE);
+        http.stub("/aspsps?country=DE&psu_type=business&service=AIS",
+                "{\"aspsps\": [{\"name\": \"Deutsche Bank\", \"country\": \"DE\"}]}");
+        http.stub("/auth", "{\"url\": \"https://auth.enablebanking.com/authorize?x=1\"}");
+        EnableBankingClient client = client(http, () -> "",
+                config("Deutsche Bank", "de", "Business"));
+
+        client.connect();
+
+        assertEquals(BASE + "/aspsps?country=DE&psu_type=business&service=AIS",
+                http.requests.get(0).url());
+        JsonObject body = JsonParser.parseString(http.requests.get(1).body()).getAsJsonObject();
+        assertEquals("Deutsche Bank", body.getAsJsonObject("aspsp").get("name").getAsString());
+        assertEquals("DE", body.getAsJsonObject("aspsp").get("country").getAsString());
+        assertEquals("business", body.get("psu_type").getAsString());
+    }
+
+    @Test
+    void connectFailsWhenAspspNotListed() {
+        FakeHttp http = new FakeHttp(BASE);
+        http.stub("/aspsps?country=ES&psu_type=personal&service=AIS",
+                "{\"aspsps\": [{\"name\": \"BBVA\", \"country\": \"ES\"}]}");
+        EnableBankingClient client = client(http, () -> "", config("Santander", "ES", "personal"));
+
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class, client::connect);
+        assertTrue(error.getMessage().contains("Santander"));
+        assertTrue(error.getMessage().contains("ES"));
+        assertTrue(error.getMessage().contains("personal"));
+        assertEquals(1, http.requests.size());
     }
 
 }
