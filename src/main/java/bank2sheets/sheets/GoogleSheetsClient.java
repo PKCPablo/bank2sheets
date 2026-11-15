@@ -5,12 +5,12 @@ import bank2sheets.Bank2SheetsException;
 import bank2sheets.config.SheetsConfig;
 import bank2sheets.http.HttpExchange;
 import bank2sheets.http.HttpExchange.Response;
+import bank2sheets.http.JsonSupport;
 import bank2sheets.http.RealHttpExchange;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
 import bank2sheets.http.Rs256Jwt;
 import java.net.URLEncoder;
@@ -104,10 +104,11 @@ public final class GoogleSheetsClient {
         }
         String token = accessToken();
         JsonArray headerRow = readHeaderRow(token);
+        int lastHeaderIndex = HEADER_VALUES.size() - 1;
         if (headerRow == null || !HEADER_VALUES.get(0).equals(stringAt(headerRow, 0))) {
             appendValues(token, toValuesJson(List.of(HEADER_VALUES)));
-        } else if (stringAt(headerRow, HEADER_VALUES.size() - 1).isBlank()) {
-            updateValues(token, "F1", toValuesJson(List.of(List.of(HEADER_VALUES.getLast()))));
+        } else if (stringAt(headerRow, lastHeaderIndex).isBlank()) {
+            updateValues(token, "F1", toValuesJson(List.of(List.of(HEADER_VALUES.get(lastHeaderIndex)))));
         }
         appendValues(token, toValuesJson(rows.stream().map(SheetRow::values).toList()));
     }
@@ -145,26 +146,28 @@ public final class GoogleSheetsClient {
             return accessToken;
         }
         JsonObject serviceAccount = parseServiceAccount();
-        JsonElement email = serviceAccount.get("client_email");
-        JsonElement privateKey = serviceAccount.get("private_key");
-        if (email == null || email.isJsonNull() || privateKey == null || privateKey.isJsonNull()) {
+        String email = JsonSupport.stringOrEmpty(serviceAccount, "client_email");
+        String privateKey = JsonSupport.stringOrEmpty(serviceAccount, "private_key");
+        if (email.isBlank() || privateKey.isBlank()) {
             throw new Bank2SheetsException("GOOGLE_SERVICE_ACCOUNT_B64 is not a service account JSON "
                     + "(missing client_email/private_key)");
         }
-        String tokenUri = serviceAccount.has("token_uri") && !serviceAccount.get("token_uri").isJsonNull()
-                ? serviceAccount.get("token_uri").getAsString() : TOKEN_URI;
+        String tokenUri = JsonSupport.stringOrEmpty(serviceAccount, "token_uri");
+        if (tokenUri.isBlank()) {
+            tokenUri = TOKEN_URI;
+        }
 
         JsonObject header = new JsonObject();
         header.addProperty("alg", "RS256");
         header.addProperty("typ", "JWT");
         long now = Instant.now().getEpochSecond();
         JsonObject claims = new JsonObject();
-        claims.addProperty("iss", email.getAsString());
+        claims.addProperty("iss", email);
         claims.addProperty("scope", SCOPE);
         claims.addProperty("aud", tokenUri);
         claims.addProperty("iat", now);
         claims.addProperty("exp", now + 3600);
-        String assertion = Rs256Jwt.encode(header.toString(), claims.toString(), privateKey.getAsString());
+        String assertion = Rs256Jwt.encode(header.toString(), claims.toString(), privateKey);
 
         String form = "grant_type="
                 + URLEncoder.encode("urn:ietf:params:oauth:grant-type:jwt-bearer", StandardCharsets.UTF_8)
@@ -175,8 +178,8 @@ public final class GoogleSheetsClient {
             throw new Bank2SheetsException("Google token request failed (HTTP " + response.status() + "): "
                     + response.body());
         }
-        JsonObject result = JsonParser.parseString(response.body()).getAsJsonObject();
-        if (!result.has("access_token")) {
+        JsonObject result = JsonSupport.parseObject(response.body());
+        if (JsonSupport.stringOrEmpty(result, "access_token").isBlank()) {
             throw new Bank2SheetsException("Google token request returned no access_token: " + response.body());
         }
         accessToken = result.get("access_token").getAsString();
@@ -191,7 +194,7 @@ public final class GoogleSheetsClient {
             throw new Bank2SheetsException("GOOGLE_SERVICE_ACCOUNT_B64 is not valid base64", e);
         }
         try {
-            return JsonParser.parseString(json).getAsJsonObject();
+            return JsonSupport.parseObject(json);
         } catch (IllegalStateException | JsonSyntaxException e) {
             throw new Bank2SheetsException("GOOGLE_SERVICE_ACCOUNT_B64 is not a service account JSON object", e);
         }
@@ -209,7 +212,7 @@ public final class GoogleSheetsClient {
         Response response = http.exchange("GET", valuesUrl(range),
                 Map.of("Authorization", "Bearer " + token), null);
         requireOk(response, "read");
-        return JsonParser.parseString(response.body()).getAsJsonObject();
+        return JsonSupport.parseObject(response.body());
     }
 
     private void appendValues(String token, String body) {

@@ -5,6 +5,7 @@ import bank2sheets.Bank2SheetsException;
 import bank2sheets.config.EnableBankingConfig;
 import bank2sheets.http.HttpExchange;
 import bank2sheets.http.HttpExchange.Response;
+import bank2sheets.http.JsonSupport;
 import bank2sheets.http.Rs256Jwt;
 import bank2sheets.model.Account;
 import bank2sheets.model.Transaction;
@@ -12,7 +13,6 @@ import bank2sheets.openbanking.TransactionSource;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -135,7 +135,7 @@ public final class EnableBankingClient implements TransactionSource {
             throw new Bank2SheetsException("Enable Banking request failed (HTTP " + response.status()
                     + "): GET /sessions/" + sessionId + " -> " + response.body());
         }
-        return "AUTHORIZED".equals(stringOrEmpty(parse(response.body()), "status"));
+        return "AUTHORIZED".equals(JsonSupport.stringOrEmpty(JsonSupport.parseObject(response.body()), "status"));
     }
 
     @Override
@@ -162,21 +162,20 @@ public final class EnableBankingClient implements TransactionSource {
         do {
             String path = "/accounts/" + accountId + "/transactions?transaction_status=BOOK";
             if (continuationKey != null) {
-                path += "&continuation_key="
-                        + URLEncoder.encode(continuationKey, StandardCharsets.UTF_8);
+                path += "&continuation_key=" + encode(continuationKey);
             }
             JsonObject result = request("GET", path, null);
             for (JsonElement element : result.getAsJsonArray("transactions")) {
                 transactions.add(mapTransaction(element.getAsJsonObject()));
             }
-            continuationKey = stringOrEmpty(result, "continuation_key");
+            continuationKey = JsonSupport.stringOrEmpty(result, "continuation_key");
         } while (!continuationKey.isEmpty());
         return transactions;
     }
 
     private Transaction mapTransaction(JsonObject t) {
         String id = transactionId(t);
-        String currency = stringOrEmpty(t.getAsJsonObject("transaction_amount"), "currency");
+        String currency = JsonSupport.stringOrEmpty(t.getAsJsonObject("transaction_amount"), "currency");
         return new Transaction(id, description(t), signedAmount(t), currency, madeOn(t));
     }
 
@@ -190,11 +189,11 @@ public final class EnableBankingClient implements TransactionSource {
      */
     private static String transactionId(JsonObject t) {
         String canonical = canonicalFields(t);
-        String entryReference = stringOrEmpty(t, "entry_reference");
+        String entryReference = JsonSupport.stringOrEmpty(t, "entry_reference");
         if (!entryReference.isBlank()) {
             return "eb:" + entryReference + ":" + shortHash(canonical);
         }
-        String transactionId = stringOrEmpty(t, "transaction_id");
+        String transactionId = JsonSupport.stringOrEmpty(t, "transaction_id");
         if (!transactionId.isBlank()) {
             return "eb:" + transactionId + ":" + shortHash(canonical);
         }
@@ -214,20 +213,20 @@ public final class EnableBankingClient implements TransactionSource {
      */
     private static String canonicalFields(JsonObject t) {
         return resolvedDate(t) + "|" + signedAmount(t).toPlainString() + "|"
-                + stringOrEmpty(t.getAsJsonObject("transaction_amount"), "currency")
-                + "|" + description(t) + "|" + stringOrEmpty(t, "reference_number");
+                + JsonSupport.stringOrEmpty(t.getAsJsonObject("transaction_amount"), "currency")
+                + "|" + description(t) + "|" + JsonSupport.stringOrEmpty(t, "reference_number");
     }
 
     /** Amount with the DBIT sign applied; the same value stored on the {@link Transaction}. */
     private static BigDecimal signedAmount(JsonObject t) {
         BigDecimal value = new BigDecimal(t.getAsJsonObject("transaction_amount").get("amount").getAsString());
-        return "DBIT".equals(stringOrEmpty(t, "credit_debit_indicator")) ? value.negate() : value;
+        return "DBIT".equals(JsonSupport.stringOrEmpty(t, "credit_debit_indicator")) ? value.negate() : value;
     }
 
     /** booking_date, else value_date, else transaction_date, in ISO {@code YYYY-MM-DD}. */
     private static String resolvedDate(JsonObject t) {
         for (String field : List.of("booking_date", "value_date", "transaction_date")) {
-            String date = stringOrEmpty(t, field);
+            String date = JsonSupport.stringOrEmpty(t, field);
             if (!date.isBlank()) {
                 return date.substring(0, 10);
             }
@@ -255,18 +254,18 @@ public final class EnableBankingClient implements TransactionSource {
                 return joined.toString();
             }
         }
-        boolean debit = "DBIT".equals(stringOrEmpty(t, "credit_debit_indicator"));
+        boolean debit = "DBIT".equals(JsonSupport.stringOrEmpty(t, "credit_debit_indicator"));
         // DBIT = money out (we paid a creditor); CRDT = money in (a debtor paid us).
         // Counterparties are nested objects: {"creditor": {"name": ...}}.
         String party = partyName(t, debit ? "creditor" : "debtor");
         if (party.isBlank()) {
             // Defensive fallback for flat fields.
-            party = stringOrEmpty(t, debit ? "creditor_name" : "debtor_name");
+            party = JsonSupport.stringOrEmpty(t, debit ? "creditor_name" : "debtor_name");
         }
         if (!party.isBlank()) {
             return party;
         }
-        return stringOrEmpty(t, "note");
+        return JsonSupport.stringOrEmpty(t, "note");
     }
 
     /** {@code name} inside the nested counterparty object, else empty. */
@@ -275,7 +274,7 @@ public final class EnableBankingClient implements TransactionSource {
         if (party == null || party.isJsonNull() || !party.isJsonObject()) {
             return "";
         }
-        return stringOrEmpty(party.getAsJsonObject(), "name");
+        return JsonSupport.stringOrEmpty(party.getAsJsonObject(), "name");
     }
 
     /** Parsed resolved date; fails when the payload has none. */
@@ -286,7 +285,7 @@ public final class EnableBankingClient implements TransactionSource {
     /** Display name from the account details endpoint; empty on failure (caller falls back to the id). */
     private String accountName(String uuid) {
         try {
-            return stringOrEmpty(request("GET", "/accounts/" + uuid + "/details", null), "name");
+            return JsonSupport.stringOrEmpty(request("GET", "/accounts/" + uuid + "/details", null), "name");
         } catch (Bank2SheetsException e) {
             return "";
         }
@@ -299,8 +298,8 @@ public final class EnableBankingClient implements TransactionSource {
                 + "&service=AIS", null);
         for (JsonElement element : result.getAsJsonArray("aspsps")) {
             JsonObject aspsp = element.getAsJsonObject();
-            if (config.aspspName().equals(stringOrEmpty(aspsp, "name"))
-                    && config.aspspCountry().equals(stringOrEmpty(aspsp, "country"))) {
+            if (config.aspspName().equals(JsonSupport.stringOrEmpty(aspsp, "name"))
+                    && config.aspspCountry().equals(JsonSupport.stringOrEmpty(aspsp, "country"))) {
                 return aspsp;
             }
         }
@@ -338,11 +337,7 @@ public final class EnableBankingClient implements TransactionSource {
             throw new Bank2SheetsException("Enable Banking request failed (HTTP " + response.status()
                     + "): " + method + " " + pathAndQuery + " -> " + response.body());
         }
-        return parse(response.body());
-    }
-
-    private static JsonObject parse(String body) {
-        return JsonParser.parseString(body).getAsJsonObject();
+        return JsonSupport.parseObject(response.body());
     }
 
     /**
@@ -396,11 +391,6 @@ public final class EnableBankingClient implements TransactionSource {
             }
         }
         return "";
-    }
-
-    private static String stringOrEmpty(JsonObject object, String member) {
-        JsonElement value = object.get(member);
-        return value == null || value.isJsonNull() ? "" : value.getAsString();
     }
 
     private static String sha256Hex(String input) {
