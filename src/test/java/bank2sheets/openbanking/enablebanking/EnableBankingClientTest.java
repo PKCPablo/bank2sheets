@@ -37,6 +37,17 @@ class EnableBankingClientTest {
     private static final long NOW = 1_000_000_000L;
     private static final String STATE = "state-1";
 
+    /** Stubs the simple {@code /auth} response used by most connect tests. */
+    private static void stubAuth(FakeHttp http) {
+        http.stub("/auth", "{\"url\": \"https://auth.enablebanking.com/authorize?x=1\"}");
+    }
+
+    /** Stubs the BBVA/ES ASPSP list used by most connect tests. */
+    private static void stubBbvaAspsp(FakeHttp http) {
+        http.stub("/aspsps?country=ES&psu_type=personal&service=AIS",
+                "{\"aspsps\": [{\"name\": \"BBVA\", \"country\": \"ES\"}]}");
+    }
+
     @Test
     void connectSendsBearerJwtAndReturnsAuthUrl() {
         FakeHttp http = new FakeHttp(BASE);
@@ -95,9 +106,8 @@ class EnableBankingClientTest {
     @Test
     void connectFallsBackTo90DaysWhenValidityAbsent() {
         FakeHttp http = new FakeHttp(BASE);
-        http.stub("/aspsps?country=ES&psu_type=personal&service=AIS",
-                "{\"aspsps\": [{\"name\": \"BBVA\", \"country\": \"ES\"}]}");
-        http.stub("/auth", "{\"url\": \"https://auth.enablebanking.com/authorize?x=1\"}");
+        stubBbvaAspsp(http);
+        stubAuth(http);
         EnableBankingClient client = client(http, () -> "");
 
         client.connect();
@@ -110,9 +120,8 @@ class EnableBankingClientTest {
     @Test
     void findConnectionIdRejectsStateMismatch() {
         FakeHttp http = new FakeHttp(BASE);
-        http.stub("/aspsps?country=ES&psu_type=personal&service=AIS",
-                "{\"aspsps\": [{\"name\": \"BBVA\", \"country\": \"ES\"}]}");
-        http.stub("/auth", "{\"url\": \"https://auth.enablebanking.com/authorize?x=1\"}");
+        stubBbvaAspsp(http);
+        stubAuth(http);
         EnableBankingClient client = client(http, () -> "https://cb?code=c&state=other-state");
         client.connect();
         Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
@@ -123,9 +132,8 @@ class EnableBankingClientTest {
     @Test
     void findConnectionIdExchangesCodeForSessionId() {
         FakeHttp http = new FakeHttp(BASE);
-        http.stub("/aspsps?country=ES&psu_type=personal&service=AIS",
-                "{\"aspsps\": [{\"name\": \"BBVA\", \"country\": \"ES\"}]}");
-        http.stub("/auth", "{\"url\": \"https://auth.enablebanking.com/authorize?x=1\"}");
+        stubBbvaAspsp(http);
+        stubAuth(http);
         http.stub("/sessions", "{\"session_id\": \"sess-1\", \"status\": \"AUTHORIZED\"}");
         AtomicReference<String> state = new AtomicReference<>();
         EnableBankingClient client = client(http,
@@ -415,7 +423,7 @@ class EnableBankingClientTest {
                   {"name": "BBVA", "country": "ES", "maximum_consent_validity": 15552000}
                 ]}
                 """);
-        http.stub("/auth", "{\"url\": \"https://auth.enablebanking.com/authorize?x=1\"}");
+        stubAuth(http);
         EnableBankingClient client = client(http, () -> "", config("Santander", "ES", "personal"));
 
         client.connect();
@@ -436,7 +444,7 @@ class EnableBankingClientTest {
         FakeHttp http = new FakeHttp(BASE);
         http.stub("/aspsps?country=DE&psu_type=business&service=AIS",
                 "{\"aspsps\": [{\"name\": \"Deutsche Bank\", \"country\": \"DE\"}]}");
-        http.stub("/auth", "{\"url\": \"https://auth.enablebanking.com/authorize?x=1\"}");
+        stubAuth(http);
         EnableBankingClient client = client(http, () -> "",
                 config("Deutsche Bank", "de", "Business"));
 
@@ -453,8 +461,7 @@ class EnableBankingClientTest {
     @Test
     void connectFailsWhenAspspNotListed() {
         FakeHttp http = new FakeHttp(BASE);
-        http.stub("/aspsps?country=ES&psu_type=personal&service=AIS",
-                "{\"aspsps\": [{\"name\": \"BBVA\", \"country\": \"ES\"}]}");
+        stubBbvaAspsp(http);
         EnableBankingClient client = client(http, () -> "", config("Santander", "ES", "personal"));
 
         Bank2SheetsException error = assertThrows(Bank2SheetsException.class, client::connect);

@@ -57,7 +57,7 @@ public final class EnableBankingClient implements TransactionSource {
     private String pendingState;
     private String sessionId;
 
-    /** Sets the session id used by {@link #listAccounts()} (persisted state, wired in Task 2). */
+    /** Sets the session id used by {@link #listAccounts()}. */
     public void setSessionId(String sessionId) {
         this.sessionId = sessionId;
     }
@@ -140,10 +140,8 @@ public final class EnableBankingClient implements TransactionSource {
 
     @Override
     public List<Account> listAccounts() {
-        if (configSessionId().isBlank()) {
-            throw new Bank2SheetsException("ENABLE_BANKING_SESSION_ID is required to list accounts");
-        }
-        JsonObject session = request("GET", "/sessions/" + configSessionId(), null);
+        String sessionId = configSessionId();
+        JsonObject session = request("GET", "/sessions/" + sessionId, null);
         if (!session.has("accounts") || !session.get("accounts").isJsonArray()) {
             throw new Bank2SheetsException(
                     "Enable Banking session response carries no accounts array: " + session);
@@ -318,7 +316,7 @@ public final class EnableBankingClient implements TransactionSource {
     private String configSessionId() {
         if (sessionId == null || sessionId.isBlank()) {
             throw new Bank2SheetsException("No Enable Banking session id available; complete the "
-                    + "connect flow first (Task 2 wires the persisted session id)");
+                    + "connect flow first");
         }
         return sessionId;
     }

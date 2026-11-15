@@ -2,7 +2,7 @@
 
 ## Scope
 
-`bank2sheets` is a personal application that uses Open Banking to automatically fetch transactions from one or more bank accounts and sync them to a Google Sheets spreadsheet. In v1 it runs on demand locally (`connect` / `fetch` / `sync`); scheduled sync also runs via `.github/workflows/sync.yml` (monthly on the 1st at 06:00 UTC, `0 6 1 * *` + `workflow_dispatch`, Actions secrets, never runs `connect` on the ephemeral runner). Verification is pending the owner adding the secrets (issue #4). It never stores bank credentials. The architecture is deliberately simple and extensible so future features (automatic expense categorization, statistics, export to other formats) can be added.
+`bank2sheets` is a personal application that uses Open Banking to automatically fetch transactions from one or more bank accounts and sync them to a Google Sheets spreadsheet. In v1 it runs on demand locally (`connect` / `fetch` / `sync`); scheduled sync also runs via `.github/workflows/sync.yml` (monthly on the 1st at 06:00 UTC, `0 6 1 * *` + `workflow_dispatch`, Actions secrets, never runs `connect` on the ephemeral runner). It never stores bank credentials. The architecture is deliberately simple and extensible so future features (automatic expense categorization, statistics, export to other formats) can be added.
 
 ## Stack (ADR-0002)
 

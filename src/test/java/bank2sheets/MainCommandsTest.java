@@ -1,7 +1,6 @@
 package bank2sheets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import bank2sheets.CliTestSupport.Result;
@@ -16,7 +15,6 @@ import bank2sheets.sheets.SheetsTestSupport;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonParser;
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -130,8 +128,7 @@ class MainCommandsTest {
                    "booking_date": "2026-08-01"}
                 ]}
                 """);
-        Path stateFile = tempDir.resolve("state.properties");
-        Files.writeString(stateFile, "enablebanking.session_id=sess-eb-1\n");
+        Path stateFile = sessionState();
 
         Result result = runEnableBanking(http, stateFile, enableBankingConfig(""), "fetch");
 
@@ -151,12 +148,9 @@ class MainCommandsTest {
         http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", NOMINA_TRANSACTION_JSON);
         FakeHttp sheets = SheetsTestSupport.fakeHttp();
         stubReadySheet(sheets);
-        sheets.stub("/sheet-1/values/E2:E", "{}");
-        Path stateFile = tempDir.resolve("state.properties");
-        Files.writeString(stateFile, "enablebanking.session_id=sess-eb-1\n");
+        Path stateFile = sessionState();
         AppConfig cfg = enableBankingConfig("sess-eb-1");
-        Main main = new Main(c -> enableBankingClient(cfg, http), () -> cfg,
-                () -> new GoogleSheetsClient(SheetsTestSupport.config(), sheets), stateFile, () -> { });
+        Main main = mainFor(cfg, http, sheets, stateFile);
 
         Result first = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
         assertEquals(0, first.exitCode());
@@ -194,15 +188,12 @@ class MainCommandsTest {
                 """);
         FakeHttp sheets = SheetsTestSupport.fakeHttp();
         stubReadySheet(sheets);
-        sheets.stub("/sheet-1/values/E2:E", "{}");
-        Path stateFile = tempDir.resolve("state.properties");
-        Files.writeString(stateFile, "enablebanking.session_id=sess-eb-1\n");
+        Path stateFile = sessionState();
         AppConfig cfg = new AppConfig("app-1", TestKeys.base64Pem(),
                 "http://127.0.0.1:8765/bank2sheets/callback", "sess-eb-1",
                 List.of(new AccountConfig("enablebanking", "uuid-1"),
                         new AccountConfig("enablebanking", "uuid-2")));
-        Main main = new Main(c -> enableBankingClient(cfg, http), () -> cfg,
-                () -> new GoogleSheetsClient(SheetsTestSupport.config(), sheets), stateFile, () -> { });
+        Main main = mainFor(cfg, http, sheets, stateFile);
 
         Result first = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
         assertEquals(0, first.exitCode());
@@ -235,12 +226,9 @@ class MainCommandsTest {
         http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", NOMINA_TRANSACTION_JSON);
         FakeHttp sheets = SheetsTestSupport.fakeHttp();
         stubReadySheet(sheets);
-        sheets.stub("/sheet-1/values/E2:E", "{}");
-        Path stateFile = tempDir.resolve("state.properties");
-        Files.writeString(stateFile, "enablebanking.session_id=sess-eb-1\n");
+        Path stateFile = sessionState();
         AppConfig cfg = enableBankingConfig("sess-eb-1");
-        Main main = new Main(c -> enableBankingClient(cfg, http), () -> cfg,
-                () -> new GoogleSheetsClient(SheetsTestSupport.config(), sheets), stateFile, () -> { });
+        Main main = mainFor(cfg, http, sheets, stateFile);
 
         Result result = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
 
@@ -329,8 +317,7 @@ class MainCommandsTest {
         FakeHttp sheets = SheetsTestSupport.fakeHttp();
         SheetsTestSupport.stubToken(sheets);
         sheets.stub("/sheet-1/values/E2:E", 403, "{\"error\":{\"message\":\"permission denied\"}}");
-        Path stateFile = tempDir.resolve("state.properties");
-        Files.writeString(stateFile, "enablebanking.session_id=sess-eb-1\n");
+        Path stateFile = sessionState();
 
         Result result = runEnableBanking(http, sheets, stateFile, enableBankingConfig(""), "sync");
 
@@ -354,8 +341,7 @@ class MainCommandsTest {
         FakeHttp http = new FakeHttp(EB_BASE);
         http.responses.put("/accounts/uuid-1/transactions?transaction_status=BOOK",
                 new Response(500, "{\"error\": \"boom\"}"));
-        Path stateFile = tempDir.resolve("state.properties");
-        Files.writeString(stateFile, "enablebanking.session_id=sess-eb-1\n");
+        Path stateFile = sessionState();
 
         Result result = runEnableBanking(http, stateFile, enableBankingConfig(""), "fetch");
 
@@ -370,15 +356,26 @@ class MainCommandsTest {
                 List.of(new AccountConfig("enablebanking", "uuid-1")));
     }
 
+    /** Writes the runtime state file with the Enable Banking session id and returns its path. */
+    private Path sessionState() throws IOException {
+        Path stateFile = tempDir.resolve("state.properties");
+        Files.writeString(stateFile, "enablebanking.session_id=sess-eb-1\n");
+        return stateFile;
+    }
+
     private static Result runEnableBanking(FakeHttp http, Path stateFile, AppConfig config, String... args) {
         return runEnableBanking(http, SheetsTestSupport.fakeHttp(), stateFile, config, args);
     }
 
     private static Result runEnableBanking(FakeHttp http, FakeHttp sheets, Path stateFile,
             AppConfig config, String... args) {
-        return CliTestSupport.capture(() -> new Main(c -> enableBankingClient(c, http), () -> config,
-                () -> new GoogleSheetsClient(SheetsTestSupport.config(), sheets), stateFile, () -> { })
-                .dispatch(args));
+        return CliTestSupport.capture(() -> mainFor(config, http, sheets, stateFile).dispatch(args));
+    }
+
+    /** Main wired with the Enable Banking client and the given Sheets fake backend. */
+    private static Main mainFor(AppConfig cfg, FakeHttp http, FakeHttp sheets, Path stateFile) {
+        return new Main(c -> enableBankingClient(c, http), () -> cfg,
+                () -> new GoogleSheetsClient(SheetsTestSupport.config(), sheets), stateFile, () -> { });
     }
 
     /** Builds the Enable Banking client with a fake HTTP backend and a state-echoing receiver. */
@@ -401,10 +398,11 @@ class MainCommandsTest {
         };
     }
 
-    /** Stubs a Sheets backend with a valid token, the header row, and a successful append. */
+    /** Stubs a Sheets backend with a valid token, the header row, an empty id column, and a successful append. */
     private static void stubReadySheet(FakeHttp sheets) {
         SheetsTestSupport.stubToken(sheets);
         sheets.stub("/sheet-1/values/A1:F1", HEADER_JSON);
+        sheets.stub("/sheet-1/values/E2:E", "{}");
         sheets.stub("/sheet-1/values/A1:F:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
     }
 }

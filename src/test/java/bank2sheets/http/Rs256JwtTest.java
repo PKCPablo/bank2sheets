@@ -2,6 +2,7 @@ package bank2sheets.http;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import bank2sheets.Bank2SheetsException;
@@ -45,12 +46,9 @@ class Rs256JwtTest {
         String header = "{\"alg\":\"RS256\",\"typ\":\"JWT\"}";
         String claims = "{\"iss\":\"x\"}";
         String badPem = "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----";
-        try {
-            Rs256Jwt.encode(header, claims, badPem);
-            org.junit.jupiter.api.Assertions.fail("expected Bank2SheetsException");
-        } catch (Bank2SheetsException expected) {
-            assertTrue(expected.getMessage().contains("RS256"));
-        }
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
+                () -> Rs256Jwt.encode(header, claims, badPem));
+        assertTrue(error.getMessage().contains("RS256"));
     }
 
 }

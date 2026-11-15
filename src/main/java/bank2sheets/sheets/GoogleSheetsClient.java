@@ -197,33 +197,32 @@ public final class GoogleSheetsClient {
         }
     }
 
+    /** Throws a descriptive {@link Bank2SheetsException} when a Sheets API call did not return 2xx. */
+    private static void requireOk(Response response, String action) {
+        if (!response.ok()) {
+            throw new Bank2SheetsException("Google Sheets " + action + " failed (HTTP " + response.status()
+                    + "): " + response.body());
+        }
+    }
+
     private JsonObject readValues(String range, String token) {
         Response response = http.exchange("GET", valuesUrl(range),
                 Map.of("Authorization", "Bearer " + token), null);
-        if (!response.ok()) {
-            throw new Bank2SheetsException("Google Sheets read failed (HTTP " + response.status() + "): "
-                    + response.body());
-        }
+        requireOk(response, "read");
         return JsonParser.parseString(response.body()).getAsJsonObject();
     }
 
     private void appendValues(String token, String body) {
         Response response = http.exchange("POST", appendUrl(),
                 Map.of("Authorization", "Bearer " + token, "Content-Type", "application/json"), body);
-        if (!response.ok()) {
-            throw new Bank2SheetsException("Google Sheets append failed (HTTP " + response.status() + "): "
-                    + response.body());
-        }
+        requireOk(response, "append");
     }
 
     /** Writes {@code body} to a single-cell range (e.g. the legacy Cuenta header backfill). */
     private void updateValues(String token, String range, String body) {
         Response response = http.exchange("PUT", valuesUrl(range) + "?valueInputOption=" + VALUE_INPUT_OPTION,
                 Map.of("Authorization", "Bearer " + token, "Content-Type", "application/json"), body);
-        if (!response.ok()) {
-            throw new Bank2SheetsException("Google Sheets update failed (HTTP " + response.status() + "): "
-                    + response.body());
-        }
+        requireOk(response, "update");
     }
 
     private String valuesUrl(String range) {
