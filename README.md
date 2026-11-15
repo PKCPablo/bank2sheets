@@ -204,7 +204,7 @@ Real credentials are provided at runtime via environment variables and are never
 | `ENABLE_BANKING_ASPSP_NAME` | Optional ASPSP selection; default `BBVA`. Must match the ASPSP name shown in Enable Banking (trimmed) |
 | `ENABLE_BANKING_ASPSP_COUNTRY` | Optional ASPSP country; default `ES` (ISO 3166 alpha-2, uppercased) |
 | `ENABLE_BANKING_PSU_TYPE` | Optional PSU type; default `personal` (lowercased) |
-| `BANK2SHEETS_ACCOUNTS` | Comma-separated `provider:accountId` entries; `enablebanking:<uuid>`; all entries must use one provider per run |
+| `BANK2SHEETS_ACCOUNTS` | Comma-separated `provider:accountId` entries; `enablebanking:<uuid>`; all entries must use one provider per run; multiple accounts are allowed and each appended row is labeled in the `Cuenta` column |
 | `GOOGLE_SERVICE_ACCOUNT_B64` | Base64-encoded Google service account JSON (`client_email` + `private_key`) with edit access to the target spreadsheet; required for `sync` |
 | `GOOGLE_SPREADSHEET_ID` | Id of the target spreadsheet (shared with the service account email); required for `sync` |
 
@@ -250,7 +250,11 @@ Caveats:
 
 ## Google Sheets layout
 
-`sync` targets the first sheet with columns `Fecha`, `Descripción`, `Importe`, `Moneda`, `TransactionId`. Rows are appended with `valueInputOption=RAW`, so amounts (e.g. `1200.50`) stay numeric cells instead of text or formulas. The header row is written once when missing. TransactionId is the dedupe key: running `sync` twice appends no duplicates.
+`sync` targets the first sheet with columns `Fecha`, `Descripción`, `Importe`, `Moneda`, `TransactionId`, `Cuenta`. Rows are appended with `valueInputOption=RAW`, so amounts (e.g. `1200.50`) stay numeric cells instead of text or formulas. The header row is written once when missing. TransactionId is the dedupe key: running `sync` twice appends no duplicates.
+
+`Cuenta` holds the source account label: the provider account display name when non-blank, otherwise the provider account id. `BANK2SHEETS_ACCOUNTS` may list multiple accounts; all rows go to the same first sheet tab, and dedupe stays global on `TransactionId`. A spreadsheet that still has the old five-column header gets `F1 = "Cuenta"` backfilled on the next sync that appends rows; historical rows keep the column blank.
+
+One bank account per spreadsheet is a deployment pattern, not a configuration option: run one instance (or fork) per account with its own `BANK2SHEETS_ACCOUNTS`, `GOOGLE_SPREADSHEET_ID`, and its own scheduled workflow and secrets. There is no account-to-spreadsheet mapping variable.
 
 ## License
 

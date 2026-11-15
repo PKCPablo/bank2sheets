@@ -48,7 +48,8 @@ Local build note (machine-specific, revalidated 2026-11-14): Maven 3.9.9 default
 ## Invariants
 
 - Sync is idempotent: existing rows are deduped by `TransactionId`, so a repeated `sync` appends no duplicates.
-- The first sheet has fixed columns `Fecha`, `Descripción`, `Importe`, `Moneda`, `TransactionId`; the header is written once when missing.
+- The first sheet has fixed columns `Fecha`, `Descripción`, `Importe`, `Moneda`, `TransactionId`, `Cuenta`; the header is written once when missing. A legacy five-column sheet gets only `F1 = "Cuenta"` backfilled on the next sync that appends rows; historical rows keep the column blank.
+- Every appended row carries a `Cuenta` label: the provider account display name when non-blank, otherwise the provider account id. `BANK2SHEETS_ACCOUNTS` may list multiple accounts and all rows go to one spreadsheet tab; dedupe stays global on `TransactionId`. One bank account per spreadsheet is a deployment pattern achieved by running one instance/fork per account (its own `BANK2SHEETS_ACCOUNTS`, `GOOGLE_SPREADSHEET_ID`, workflow, and secrets) — there is no account-to-spreadsheet routing configuration.
 - Amounts are appended with `valueInputOption=RAW`, so they stay numeric cells rather than text or formulas.
 - Secrets (Enable Banking app id + private key, Google service-account JSON, spreadsheet id) come only from environment variables; nothing sensitive is committed.
 - Consent is AIS-only (`accounts` + `transactions`); PIS/transfers are never requested.

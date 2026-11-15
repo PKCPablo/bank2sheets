@@ -2,7 +2,7 @@
 
 ## Project overview
 
-bank2sheets is a personal Java 21 CLI that fetches BBVA transactions through Open Banking (Enable Banking restricted production is the only provider per ADR-0005) and idempotently appends them to a Google Sheets spreadsheet. It runs on demand (`connect` / `fetch` / `sync`), keeps credentials out of the repository, and has no frontend or database. Start with `README.md` for usage and `docs/ai/README.md` for routed durable memory; most agent work touches `src/main/java/bank2sheets/` (provider clients, Sheets client, config, CLI wiring) and its mirrored tests.
+bank2sheets is a personal Java 21 CLI that fetches BBVA transactions through Open Banking (Enable Banking restricted production is the only provider per ADR-0005) and idempotently appends them to a Google Sheets spreadsheet; each row carries a source-account `Cuenta` column, and one bank account per spreadsheet is achieved by running one instance/fork per account (no routing configuration). It runs on demand (`connect` / `fetch` / `sync`), keeps credentials out of the repository, and has no frontend or database. Start with `README.md` for usage and `docs/ai/README.md` for routed durable memory; most agent work touches `src/main/java/bank2sheets/` (provider clients, Sheets client, config, CLI wiring) and its mirrored tests.
 
 ## Project structure
 
@@ -27,7 +27,7 @@ bank2sheets is a personal Java 21 CLI that fetches BBVA transactions through Ope
 
 ## Testing
 
-- Full suite: `.\scripts\mvn.ps1 test` — 83 JUnit 5 tests, JaCoCo report at `target/site/jacoco/index.html`, and an 80% line-coverage gate that fails the build below 80%.
+- Full suite: `.\scripts\mvn.ps1 test` — 96 JUnit 5 tests, JaCoCo report at `target/site/jacoco/index.html`, and an 80% line-coverage gate that fails the build below 80%.
 - Single test: `.\scripts\mvn.ps1 test '-Dtest=EnableBankingClientTest'` or `'-Dtest=EnableBankingClientTest#methodName'` (Maven Surefire).
 - No lint or typecheck command is configured; `.editorconfig` is the only style enforcement.
 
