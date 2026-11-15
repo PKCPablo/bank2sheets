@@ -32,7 +32,7 @@ class MainCommandsTest {
 
     /** Header row stub body shared by the sync tests. */
     private static final String HEADER_JSON =
-            "{\"values\":[[\"Fecha\",\"Descripción\",\"Importe\",\"Moneda\",\"TransactionId\"]]}";
+            "{\"values\":[[\"Fecha\",\"Descripción\",\"Importe\",\"Moneda\",\"TransactionId\",\"Cuenta\"]]}";
 
     @TempDir
     Path tempDir;
@@ -336,7 +336,7 @@ class MainCommandsTest {
     /** Stubs a Sheets backend with a valid token, the header row, and a successful append. */
     private static void stubReadySheet(FakeHttp sheets) {
         SheetsTestSupport.stubToken(sheets);
-        sheets.stub("/sheet-1/values/A1:E1", HEADER_JSON);
-        sheets.stub("/sheet-1/values/A1:E:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
+        sheets.stub("/sheet-1/values/A1:F1", HEADER_JSON);
+        sheets.stub("/sheet-1/values/A1:F:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
     }
 }

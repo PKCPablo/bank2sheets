@@ -5,21 +5,23 @@ import java.util.List;
 
 /**
  * One spreadsheet row to append, in the fixed column order
- * Fecha, Descripción, Importe, Moneda, TransactionId.
+ * Fecha, Descripción, Importe, Moneda, TransactionId, Cuenta.
  *
  * <p>Importe keeps full precision as {@link BigDecimal} and is serialized as a
  * JSON number (a numeric cell), never as a string. TransactionId is the dedupe
- * key used by the sync pipeline.
+ * key used by the sync pipeline. Cuenta labels the source account (display
+ * name when available, otherwise the provider account id).
  */
 public record SheetRow(
         String fecha,
         String descripcion,
         BigDecimal importe,
         String moneda,
-        String transactionId) {
+        String transactionId,
+        String cuenta) {
 
     /** Column order; matches the spreadsheet header written by {@link GoogleSheetsClient} (must match HEADER_VALUES). */
     List<Object> values() {
-        return List.<Object>of(fecha, descripcion, importe, moneda, transactionId);
+        return List.<Object>of(fecha, descripcion, importe, moneda, transactionId, cuenta);
     }
 }

@@ -31,24 +31,26 @@ import java.util.Set;
  * with an in-memory fake, so no real Google API call happens outside manual owner
  * validation.
  *
- * <p>Target layout (first sheet, columns A..E):
- * {@code Fecha, Descripción, Importe, Moneda, TransactionId}. Rows are appended
- * with {@code valueInputOption=RAW}, so amounts sent as JSON numbers become
- * numeric cells and descriptive text stays literal (no date/formula parsing).
- * The header row is written once when missing. TransactionId is the dedupe key.
+ * <p>Target layout (first sheet, columns A..F):
+ * {@code Fecha, Descripción, Importe, Moneda, TransactionId, Cuenta}. Rows are
+ * appended with {@code valueInputOption=RAW}, so amounts sent as JSON numbers
+ * become numeric cells and descriptive text stays literal (no date/formula
+ * parsing). The header row is written once when missing; on a legacy five-column
+ * sheet only the missing {@code F1 = "Cuenta"} cell is backfilled. TransactionId
+ * is the dedupe key.
  */
 public final class GoogleSheetsClient {
 
     private static final String API_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
     private static final String TOKEN_URI = "https://oauth2.googleapis.com/token";
     private static final String SCOPE = "https://www.googleapis.com/auth/spreadsheets";
-    private static final String RANGE = "A1:E";
-    private static final String HEADER_RANGE = "A1:E1";
+    private static final String RANGE = "A1:F";
+    private static final String HEADER_RANGE = "A1:F1";
     private static final String IDS_RANGE = "E2:E";
     private static final String VALUE_INPUT_OPTION = "RAW";
-    /** Header row; order must match {@link SheetRow#values()} (columns A..E). */
+    /** Header row; order must match {@link SheetRow#values()} (columns A..F). */
     private static final List<Object> HEADER_VALUES =
-            List.<Object>of("Fecha", "Descripción", "Importe", "Moneda", "TransactionId");
+            List.<Object>of("Fecha", "Descripción", "Importe", "Moneda", "TransactionId", "Cuenta");
     private static final Gson GSON = new Gson();
 
     private final SheetsConfig config;
@@ -91,15 +93,22 @@ public final class GoogleSheetsClient {
     /**
      * Appends the given rows in one batch after the header. When the sheet has no
      * header yet, the header row is written first so a fresh spreadsheet gets the
-     * expected columns. Empty input does nothing.
+     * expected columns. On a legacy five-column sheet (A1 already "Fecha" but F1
+     * missing or blank), exactly one update writes {@code F1 = "Cuenta"} before
+     * the data append; a non-blank F1 is never overwritten. Empty input does
+     * nothing.
      */
     public void appendRows(List<SheetRow> rows) {
         if (rows.isEmpty()) {
             return;
         }
         String token = accessToken();
-        if (!hasHeader(token)) {
+        JsonArray headerRow = readHeaderRow(token);
+        if (headerRow == null || !HEADER_VALUES.get(0).equals(stringAt(headerRow, 0))) {
             appendValues(token, toValuesJson(List.of(HEADER_VALUES)));
+        } else if (headerRow.size() < HEADER_VALUES.size()
+                || stringAt(headerRow, HEADER_VALUES.size() - 1).isBlank()) {
+            updateValues(token, "F1", toValuesJson(List.of(List.of(HEADER_VALUES.get(HEADER_VALUES.size() - 1)))));
         }
         appendValues(token, toValuesJson(rows.stream().map(SheetRow::values).toList()));
     }
@@ -109,18 +118,22 @@ public final class GoogleSheetsClient {
         return GSON.toJson(Map.of("values", rows));
     }
 
-    private boolean hasHeader(String token) {
+    /** First row of {@link #HEADER_RANGE}, or {@code null} when the sheet is empty. */
+    private JsonArray readHeaderRow(String token) {
         JsonObject result = readValues(HEADER_RANGE, token);
         if (!result.has("values")) {
-            return false;
+            return null;
         }
         JsonArray values = result.getAsJsonArray("values");
-        if (values.isEmpty()) {
-            return false;
+        return values.isEmpty() ? null : values.get(0).getAsJsonArray();
+    }
+
+    /** Cell text at {@code index}, or "" when the cell is missing or JSON null. */
+    private static String stringAt(JsonArray row, int index) {
+        if (index >= row.size() || row.get(index).isJsonNull()) {
+            return "";
         }
-        JsonArray firstRow = values.get(0).getAsJsonArray();
-        return !firstRow.isEmpty() && !firstRow.get(0).isJsonNull()
-                && HEADER_VALUES.get(0).equals(firstRow.get(0).getAsString());
+        return row.get(index).getAsString();
     }
 
     /**
@@ -200,6 +213,16 @@ public final class GoogleSheetsClient {
                 Map.of("Authorization", "Bearer " + token, "Content-Type", "application/json"), body);
         if (!response.ok()) {
             throw new Bank2SheetsException("Google Sheets append failed (HTTP " + response.status() + "): "
+                    + response.body());
+        }
+    }
+
+    /** Writes {@code body} to a single-cell range (e.g. the legacy Cuenta header backfill). */
+    private void updateValues(String token, String range, String body) {
+        Response response = http.exchange("PUT", valuesUrl(range) + "?valueInputOption=" + VALUE_INPUT_OPTION,
+                Map.of("Authorization", "Bearer " + token, "Content-Type", "application/json"), body);
+        if (!response.ok()) {
+            throw new Bank2SheetsException("Google Sheets update failed (HTTP " + response.status() + "): "
                     + response.body());
         }
     }

@@ -234,7 +234,8 @@ public final class Main {
                         continue;
                     }
                     toAppend.add(new SheetRow(transaction.madeOn().toString(), transaction.description(),
-                            transaction.amount(), transaction.currency(), transaction.id()));
+                            transaction.amount(), transaction.currency(), transaction.id(),
+                            account.providerAccountId()));
                 }
             }
             sheetsClient.appendRows(toAppend);
