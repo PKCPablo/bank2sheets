@@ -20,6 +20,9 @@ class AppConfigTest {
         assertEquals("", config.enableBankingPrivateKeyB64());
         assertEquals("", config.enableBankingRedirectUrl());
         assertEquals("", config.enableBankingSessionId());
+        assertEquals("", config.enableBankingAspspName());
+        assertEquals("", config.enableBankingAspspCountry());
+        assertEquals("", config.enableBankingPsuType());
         assertTrue(config.accounts().isEmpty());
     }
 
@@ -89,11 +92,37 @@ class AppConfigTest {
                 "ENABLE_BANKING_PRIVATE_KEY_B64", "a2V5",
                 "ENABLE_BANKING_REDIRECT_URL", "http://127.0.0.1:8765/bank2sheets/callback",
                 "ENABLE_BANKING_SESSION_ID", "sess-1",
+                "ENABLE_BANKING_ASPSP_NAME", " Santander ",
+                "ENABLE_BANKING_ASPSP_COUNTRY", "es",
+                "ENABLE_BANKING_PSU_TYPE", "Personal",
                 "BANK2SHEETS_ACCOUNTS", "enablebanking:uuid-1"));
         assertEquals("eb-app-1", config.enableBankingAppId());
         assertEquals("a2V5", config.enableBankingPrivateKeyB64());
         assertEquals("http://127.0.0.1:8765/bank2sheets/callback", config.enableBankingRedirectUrl());
         assertEquals("sess-1", config.enableBankingSessionId());
+        assertEquals(" Santander ", config.enableBankingAspspName());
+        assertEquals("es", config.enableBankingAspspCountry());
+        assertEquals("Personal", config.enableBankingPsuType());
         assertEquals(List.of(new AccountConfig("enablebanking", "uuid-1")), config.accounts());
+        EnableBankingConfig ebConfig = config.enableBankingConfig();
+        assertEquals("Santander", ebConfig.aspspName());
+        assertEquals("ES", ebConfig.aspspCountry());
+        assertEquals("personal", ebConfig.psuType());
+    }
+
+    @Test
+    void withProviderStatePreservesAspspSettings() {
+        AppConfig config = AppConfig.fromEnv(Map.of(
+                "ENABLE_BANKING_APP_ID", "eb-app-1",
+                "ENABLE_BANKING_ASPSP_NAME", "Santander",
+                "ENABLE_BANKING_ASPSP_COUNTRY", "ES",
+                "ENABLE_BANKING_PSU_TYPE", "business"));
+
+        AppConfig updated = config.withProviderState("sess-2");
+
+        assertEquals("sess-2", updated.enableBankingSessionId());
+        assertEquals("Santander", updated.enableBankingAspspName());
+        assertEquals("ES", updated.enableBankingAspspCountry());
+        assertEquals("business", updated.enableBankingPsuType());
     }
 }

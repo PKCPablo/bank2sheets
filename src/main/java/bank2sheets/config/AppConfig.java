@@ -12,13 +12,28 @@ import java.util.Map;
  *
  * <p>{@code BANK2SHEETS_ACCOUNTS} holds comma-separated {@code provider:accountId}
  * entries; all entries must use the {@code enablebanking} provider.
+ *
+ * <p>The optional {@code ENABLE_BANKING_ASPSP_NAME}, {@code ENABLE_BANKING_ASPSP_COUNTRY}
+ * and {@code ENABLE_BANKING_PSU_TYPE} variables configure the target ASPSP; blank values
+ * are defaulted/normalized by {@link EnableBankingConfig} (BBVA/ES/personal).
  */
 public record AppConfig(
         String enableBankingAppId,
         String enableBankingPrivateKeyB64,
         String enableBankingRedirectUrl,
         String enableBankingSessionId,
+        String enableBankingAspspName,
+        String enableBankingAspspCountry,
+        String enableBankingPsuType,
         List<AccountConfig> accounts) {
+
+    /** Convenience constructor defaulting the ASPSP settings (blank -> BBVA/ES/personal). */
+    public AppConfig(String enableBankingAppId, String enableBankingPrivateKeyB64,
+            String enableBankingRedirectUrl, String enableBankingSessionId,
+            List<AccountConfig> accounts) {
+        this(enableBankingAppId, enableBankingPrivateKeyB64, enableBankingRedirectUrl,
+                enableBankingSessionId, "", "", "", accounts);
+    }
 
     public AppConfig {
         accounts = List.copyOf(accounts);
@@ -31,7 +46,8 @@ public record AppConfig(
     /** Returns a copy with the persisted Enable Banking session id replaced. */
     public AppConfig withProviderState(String sessionId) {
         return new AppConfig(enableBankingAppId, enableBankingPrivateKeyB64,
-                enableBankingRedirectUrl, sessionId, accounts);
+                enableBankingRedirectUrl, sessionId, enableBankingAspspName,
+                enableBankingAspspCountry, enableBankingPsuType, accounts);
     }
 
     /**
@@ -58,7 +74,9 @@ public record AppConfig(
 
     /** Enable Banking credentials validated by {@link EnableBankingConfig} (throws when blank). */
     public EnableBankingConfig enableBankingConfig() {
-        return new EnableBankingConfig(enableBankingAppId, enableBankingPrivateKeyB64, enableBankingRedirectUrl);
+        return new EnableBankingConfig(enableBankingAppId, enableBankingPrivateKeyB64,
+                enableBankingRedirectUrl, enableBankingAspspName, enableBankingAspspCountry,
+                enableBankingPsuType);
     }
 
     static AppConfig fromEnv(Map<String, String> env) {
@@ -67,6 +85,9 @@ public record AppConfig(
                 env.getOrDefault("ENABLE_BANKING_PRIVATE_KEY_B64", ""),
                 env.getOrDefault("ENABLE_BANKING_REDIRECT_URL", ""),
                 env.getOrDefault("ENABLE_BANKING_SESSION_ID", ""),
+                env.getOrDefault("ENABLE_BANKING_ASPSP_NAME", ""),
+                env.getOrDefault("ENABLE_BANKING_ASPSP_COUNTRY", ""),
+                env.getOrDefault("ENABLE_BANKING_PSU_TYPE", ""),
                 parseAccounts(env.getOrDefault("BANK2SHEETS_ACCOUNTS", "")));
     }
 

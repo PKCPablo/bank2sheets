@@ -2,6 +2,7 @@ package bank2sheets.config;
 
 import bank2sheets.Bank2SheetsException;
 import java.net.URI;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -13,8 +14,21 @@ import java.util.Map;
  * convert PKCS#1 keys with {@code openssl pkcs8 -topk8 -nocrypt}. The redirect URL
  * is validated in two modes: {@code http} loopback ({@code 127.0.0.1}/{@code localhost},
  * explicit port, non-empty path) or {@code https} (non-blank host, non-empty path).
+ *
+ * <p>Three optional variables configure the target ASPSP: {@code ENABLE_BANKING_ASPSP_NAME}
+ * (trimmed, default {@code BBVA}), {@code ENABLE_BANKING_ASPSP_COUNTRY} (trimmed and
+ * uppercased ISO 3166 alpha-2, default {@code ES}) and {@code ENABLE_BANKING_PSU_TYPE}
+ * (trimmed and lowercased, default {@code personal}). Blank or unset values fall back
+ * to these defaults.
  */
-public record EnableBankingConfig(String appId, String privateKeyB64, String redirectUrl) {
+public record EnableBankingConfig(
+        String appId, String privateKeyB64, String redirectUrl,
+        String aspspName, String aspspCountry, String psuType) {
+
+    /** Convenience constructor defaulting the ASPSP settings to BBVA/ES/personal. */
+    public EnableBankingConfig(String appId, String privateKeyB64, String redirectUrl) {
+        this(appId, privateKeyB64, redirectUrl, "", "", "");
+    }
 
     public EnableBankingConfig {
         if (appId == null || appId.isBlank()) {
@@ -28,6 +42,11 @@ public record EnableBankingConfig(String appId, String privateKeyB64, String red
             throw new Bank2SheetsException("ENABLE_BANKING_REDIRECT_URL must be set (application redirect URL)");
         }
         validateRedirectUrl(redirectUrl);
+        aspspName = aspspName == null || aspspName.isBlank() ? "BBVA" : aspspName.trim();
+        aspspCountry = aspspCountry == null || aspspCountry.isBlank()
+                ? "ES" : aspspCountry.trim().toUpperCase(Locale.ROOT);
+        psuType = psuType == null || psuType.isBlank()
+                ? "personal" : psuType.trim().toLowerCase(Locale.ROOT);
     }
 
     public static EnableBankingConfig fromEnv() {
@@ -38,7 +57,10 @@ public record EnableBankingConfig(String appId, String privateKeyB64, String red
         return new EnableBankingConfig(
                 env.getOrDefault("ENABLE_BANKING_APP_ID", ""),
                 env.getOrDefault("ENABLE_BANKING_PRIVATE_KEY_B64", ""),
-                env.getOrDefault("ENABLE_BANKING_REDIRECT_URL", ""));
+                env.getOrDefault("ENABLE_BANKING_REDIRECT_URL", ""),
+                env.getOrDefault("ENABLE_BANKING_ASPSP_NAME", ""),
+                env.getOrDefault("ENABLE_BANKING_ASPSP_COUNTRY", ""),
+                env.getOrDefault("ENABLE_BANKING_PSU_TYPE", ""));
     }
 
     /** Validates the redirect URL per the two modes described in the class Javadoc. */
