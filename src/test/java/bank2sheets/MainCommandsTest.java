@@ -11,7 +11,7 @@ import bank2sheets.config.SheetsConfig;
 import bank2sheets.http.HttpExchange.Response;
 import bank2sheets.openbanking.enablebanking.AuthorizationCodeReceiver;
 import bank2sheets.openbanking.enablebanking.EnableBankingClient;
-import bank2sheets.openbanking.saltedge.FakeHttp;
+import bank2sheets.http.FakeHttp;
 import bank2sheets.openbanking.saltedge.SaltEdgeClient;
 import bank2sheets.sheets.GoogleSheetsClient;
 import bank2sheets.sheets.SheetsTestSupport;

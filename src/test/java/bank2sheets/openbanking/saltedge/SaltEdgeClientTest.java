@@ -9,6 +9,7 @@ import bank2sheets.config.AccountConfig;
 import bank2sheets.config.AppConfig;
 import bank2sheets.model.Account;
 import bank2sheets.model.Transaction;
+import bank2sheets.http.FakeHttp;
 import bank2sheets.http.HttpExchange.Response;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;

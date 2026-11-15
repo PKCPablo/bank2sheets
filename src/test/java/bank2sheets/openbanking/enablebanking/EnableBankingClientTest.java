@@ -13,7 +13,7 @@ import bank2sheets.config.EnableBankingConfig;
 import bank2sheets.http.HttpExchange.Response;
 import bank2sheets.model.Account;
 import bank2sheets.model.Transaction;
-import bank2sheets.openbanking.saltedge.FakeHttp;
+import bank2sheets.http.FakeHttp;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.math.BigDecimal;

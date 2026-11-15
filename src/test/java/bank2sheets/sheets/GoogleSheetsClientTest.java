@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import bank2sheets.config.SheetsConfig;
-import bank2sheets.openbanking.saltedge.FakeHttp;
+import bank2sheets.http.FakeHttp;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonParser;
 import java.math.BigDecimal;

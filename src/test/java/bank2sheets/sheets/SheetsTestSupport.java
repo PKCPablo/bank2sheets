@@ -2,7 +2,7 @@ package bank2sheets.sheets;
 
 import bank2sheets.TestKeys;
 import bank2sheets.config.SheetsConfig;
-import bank2sheets.openbanking.saltedge.FakeHttp;
+import bank2sheets.http.FakeHttp;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 

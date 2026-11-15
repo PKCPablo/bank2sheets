@@ -1,21 +1,15 @@
-package bank2sheets.openbanking.saltedge;
+package bank2sheets.http;
 
-import bank2sheets.http.HttpExchange;
-import bank2sheets.http.HttpExchange.Response;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * In-memory HTTP stub keyed by path + query, recording every request. Shared by
- * SaltEdgeClient and Main command tests; the sheets tests reuse it through a
- * base-URL override ({@link #FakeHttp(String)}); no real network calls.
- *
- * <p>ponytail: this fake serves the shared {@code bank2sheets.http} seam but
- * stays in the {@code openbanking.saltedge} test package (its historical home)
- * so both client test suites and Main command tests keep importing it from one
- * stable place; moving it would churn every test file for no behavior change.
+ * In-memory HTTP stub keyed by path + query, recording every request. Shared
+ * HTTP stub for the Sheets, Enable Banking, Main command, and (until deletion)
+ * Salt Edge tests; the sheets tests reuse it through a base-URL override
+ * ({@link #FakeHttp(String)}); no real network calls.
  */
 public class FakeHttp implements HttpExchange {
 
