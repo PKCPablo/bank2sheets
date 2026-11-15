@@ -2,11 +2,11 @@
 
 ## Project overview
 
-bank2sheets is a personal Java 21 CLI that fetches BBVA transactions through Open Banking (Enable Banking restricted production is the primary provider per ADR-0005; Salt Edge V6 remains a selectable fallback) and idempotently appends them to a Google Sheets spreadsheet. It runs on demand (`connect` / `fetch` / `sync`), keeps credentials out of the repository, and has no frontend or database. Start with `README.md` for usage and `docs/ai/README.md` for routed durable memory; most agent work touches `src/main/java/bank2sheets/` (provider clients, Sheets client, config, CLI wiring) and its mirrored tests.
+bank2sheets is a personal Java 21 CLI that fetches BBVA transactions through Open Banking (Enable Banking restricted production is the only provider per ADR-0005) and idempotently appends them to a Google Sheets spreadsheet. It runs on demand (`connect` / `fetch` / `sync`), keeps credentials out of the repository, and has no frontend or database. Start with `README.md` for usage and `docs/ai/README.md` for routed durable memory; most agent work touches `src/main/java/bank2sheets/` (provider clients, Sheets client, config, CLI wiring) and its mirrored tests.
 
 ## Project structure
 
-- `src/main/java/bank2sheets/` — `Main` CLI plus `config/` (env config, runtime state), `http/` (HTTP seam + `Rs256Jwt`), `model/` (`Account`, `Transaction`), `openbanking/` (`TransactionSource`, `ProviderSources` factory, `saltedge/SaltEdgeClient`, `enablebanking/EnableBankingClient`), `sheets/` (`GoogleSheetsClient`, `SheetRow`).
+- `src/main/java/bank2sheets/` — `Main` CLI plus `config/` (env config, runtime state), `http/` (HTTP seam + `Rs256Jwt`), `model/` (`Account`, `Transaction`), `openbanking/` (`TransactionSource`, `ProviderSources` factory, `enablebanking/EnableBankingClient`), `sheets/` (`GoogleSheetsClient`, `SheetRow`).
 - `src/test/java/` — mirrors the main packages; fake HTTP backends plus unit and CLI tests.
 - `scripts/` — `mvn.ps1` (JDK 21 Maven wrapper) and `run.ps1` (loads the repo-root `.env`, resolves a JDK 21+ like `mvn.ps1`, runs the fat JAR); both share `jdk.ps1` (JDK 21+ discovery).
 - `docs/ai/` — routed AI memory: `README.md` router, `architecture.md`, `decisions/`, `plans/`, `backlog/`, `logs/`.
@@ -27,8 +27,8 @@ bank2sheets is a personal Java 21 CLI that fetches BBVA transactions through Ope
 
 ## Testing
 
-- Full suite: `.\scripts\mvn.ps1 test` — 104 JUnit 5 tests, JaCoCo report at `target/site/jacoco/index.html`, and an 80% line-coverage gate that fails the build below 80%.
-- Single test: `.\scripts\mvn.ps1 test '-Dtest=SaltEdgeClientTest'` or `'-Dtest=SaltEdgeClientTest#methodName'` (Maven Surefire).
+- Full suite: `.\scripts\mvn.ps1 test` — 83 JUnit 5 tests, JaCoCo report at `target/site/jacoco/index.html`, and an 80% line-coverage gate that fails the build below 80%.
+- Single test: `.\scripts\mvn.ps1 test '-Dtest=EnableBankingClientTest'` or `'-Dtest=EnableBankingClientTest#methodName'` (Maven Surefire).
 - No lint or typecheck command is configured; `.editorconfig` is the only style enforcement.
 
 ## Code style
@@ -46,7 +46,7 @@ bank2sheets is a personal Java 21 CLI that fetches BBVA transactions through Ope
 
 ## Boundaries
 
-- Never commit `.env`, credentials, service-account keys, or `bank2sheets-state.properties` (it holds the provider connection/session ids: `saltedge.connection_id` and `enablebanking.session_id`).
+- Never commit `.env`, credentials, service-account keys, or `bank2sheets-state.properties` (it holds the provider session id: `enablebanking.session_id`).
 - Do not add runtime dependencies beyond Gson without asking; no frontend, database, or formal architecture layer.
 - Scheduled sync runs via `.github/workflows/sync.yml` (daily 06:00 UTC + `workflow_dispatch`), using repository Actions secrets; it never runs `connect` (ephemeral runner, session id from the `ENABLE_BANKING_SESSION_ID` secret). Verified 2026-11-14 via `workflow_dispatch` (issue #4 closed).
 - Keep changes within the requested scope; record durable decisions in `docs/ai/` via the planner.

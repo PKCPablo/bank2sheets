@@ -167,6 +167,10 @@ Follow-up: implemented by `plans/2026-11-13_171738-enable-banking-adapter.md` (T
 
 The Enable Banking adapter is validated in production with real BBVA (`fetch` 171 transactions; `sync` twice 171 then 0 rows), so the one-release Salt Edge retention from the adapter plan no longer applies. **Salt Edge is a discarded option and is not a fallback.** Its remaining client/config/state/test code is scheduled for removal in GitHub issue #7; until that lands, the tree still contains legacy Salt Edge paths that must not be used. The superseded Salt Edge V6 migration plan is kept for history only.
 
+## Amendment (2026-11-14) — closure: fallback code removed
+
+GitHub issue #7 removed the Salt Edge fallback code: `SaltEdgeClient`/`SaltEdgeException` and their tests are deleted, `enablebanking` is the only accepted provider (unsupported providers fail fast), the `SALTEDGE_*` env contract is gone, and `bank2sheets-state.properties` holds only `enablebanking.session_id` (a legacy `saltedge.connection_id` may persist in existing state files, is never read, and no migration runs). The 2026-11-14 wording above ("scheduled for removal in GitHub issue #7", "remained in the tree until the adapter landed", "code removal is tracked in GitHub issue #7") is now landed/closed. The historical evidence, matrix, and risks above are kept unchanged.
+
 ## Risks (accepted)
 
 - Restricted mode only exposes the specific accounts the owner links; linking is per-account and once linked, only those accounts are returned.

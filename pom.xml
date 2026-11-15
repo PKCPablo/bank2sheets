@@ -41,7 +41,7 @@
   <dependencies>
     <!-- ponytail: the JDK has no JSON support, so this is the one justified dependency
          (stdlib rung 3 unavailable, dependency rung 5). Gson is the smallest stable
-         JSON library with no transitive dependencies; used only by SaltEdgeClient. -->
+         JSON library with no transitive dependencies; used by the Enable Banking and Google Sheets clients. -->
     <dependency>
       <groupId>com.google.code.gson</groupId>
       <artifactId>gson</artifactId>
