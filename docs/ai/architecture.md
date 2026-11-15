@@ -2,7 +2,7 @@
 
 ## Scope
 
-`bank2sheets` is a personal application that uses Open Banking to automatically fetch transactions from one or more bank accounts and sync them to a Google Sheets spreadsheet. In v1 it runs on demand locally (`connect` / `fetch` / `sync`); scheduled sync also runs via `.github/workflows/sync.yml` (daily 06:00 UTC + `workflow_dispatch`, Actions secrets, never runs `connect` on the ephemeral runner). Verification is pending the owner adding the secrets (issue #4). It never stores bank credentials. The architecture is deliberately simple and extensible so future features (automatic expense categorization, statistics, export to other formats) can be added.
+`bank2sheets` is a personal application that uses Open Banking to automatically fetch transactions from one or more bank accounts and sync them to a Google Sheets spreadsheet. In v1 it runs on demand locally (`connect` / `fetch` / `sync`); scheduled sync also runs via `.github/workflows/sync.yml` (monthly on the 1st at 06:00 UTC, `0 6 1 * *` + `workflow_dispatch`, Actions secrets, never runs `connect` on the ephemeral runner). Verification is pending the owner adding the secrets (issue #4). It never stores bank credentials. The architecture is deliberately simple and extensible so future features (automatic expense categorization, statistics, export to other formats) can be added.
 
 ## Stack (ADR-0002)
 
@@ -12,7 +12,7 @@
 - HTTP: JDK `java.net.http.HttpClient`; JSON: Gson (smallest stable lib, no transitive deps; ponytail decision over Jackson).
 - Google Sheets: no official client library — stdlib `java.net.http.HttpClient` + stdlib RS256 service-account JWT (RFC 7523) + Gson. Auth with a Google service account (the spreadsheet is shared with its email). No interactive OAuth.
 - Testing: JUnit 5 (minimum).
-- Execution: on-demand locally (`connect` / `fetch` / `sync` CLI) plus scheduled sync via `.github/workflows/sync.yml` (daily 06:00 UTC + `workflow_dispatch`; Actions secrets; never runs `connect` — the ephemeral runner uses `ENABLE_BANKING_SESSION_ID` from secrets). Verified 2026-11-14 via `workflow_dispatch` (issue #4 closed).
+- Execution: on-demand locally (`connect` / `fetch` / `sync` CLI) plus scheduled sync via `.github/workflows/sync.yml` (monthly on the 1st at 06:00 UTC, `0 6 1 * *` + `workflow_dispatch`; Actions secrets; never runs `connect` — the ephemeral runner uses `ENABLE_BANKING_SESSION_ID` from secrets). Verified 2026-11-14 via `workflow_dispatch` (issue #4 closed).
 - Open Banking providers: the primary provider is **Enable Banking restricted production** (free, personal use, own linked accounts; ADR-0005, 2026-11-13), implemented behind the `TransactionSource` seam and selected by the `ProviderSources` factory. The Enable Banking sandbox was validated 2026-11-13 (`connect`/`fetch`; `sync` twice → 17 then 0 rows) and production real BBVA on 2026-11-14 (`fetch` 171 transactions; `sync` twice → 171 then 0 rows). Salt Edge V6 is a **discarded option** (ADR-0005); its fallback code was removed in GitHub issue #7 (it was sandbox-validated with a fake BBVA provider, but real BBVA was blocked there — `bbva_es` absent from the Service key catalog). Powens (ex Budget Insight) is the only aggregator verified for Trade Republic and is deferred until needed. GoCardless/Nordigen is not viable for new users (stopped onboarding, enterprise-only).
 
 ## Configuration / Environment (contract)

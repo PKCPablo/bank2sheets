@@ -80,7 +80,7 @@ The runtime state file `bank2sheets-state.properties` holds only the provider id
 
 ## Scheduled sync (GitHub Actions)
 
-`.github/workflows/sync.yml` builds the fat JAR and runs `sync` daily at 06:00 UTC and on manual dispatch (`workflow_dispatch`). The runner is ephemeral, so the workflow never runs `connect`; it uses the session id from the `ENABLE_BANKING_SESSION_ID` secret.
+`.github/workflows/sync.yml` builds the fat JAR and runs `sync` monthly on the 1st at 06:00 UTC (`0 6 1 * *`) and on manual dispatch (`workflow_dispatch`). The runner is ephemeral, so the workflow never runs `connect`; it uses the session id from the `ENABLE_BANKING_SESSION_ID` secret.
 
 Required repository secrets (Settings → Secrets and variables → Actions → New repository secret):
 
@@ -98,7 +98,7 @@ Caveats:
 
 - The session id expires after an ASPSP-dependent validity period (commonly up to ~180 days) or when you re-run `connect` locally; when that happens, copy the fresh `enablebanking.session_id` from `bank2sheets-state.properties` into the `ENABLE_BANKING_SESSION_ID` secret.
 - For the first manual run, point `GOOGLE_SPREADSHEET_ID` at the disposable test sheet; switch the secret to the real spreadsheet after verifying the appended rows.
-- GitHub disables scheduled workflows on public repos after 60 days of no repository activity; a manual `workflow_dispatch` run or any repo activity re-enables the schedule.
+- GitHub disables scheduled workflows on public repos after 60 days of no repository activity; a manual `workflow_dispatch` run or any repo activity re-enables the schedule. With a monthly cadence, a silently disabled workflow can go unnoticed for up to a month (see issue #6).
 
 ## Google Sheets layout
 
