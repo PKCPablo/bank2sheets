@@ -212,9 +212,11 @@ public final class Main {
 
     /**
      * Fetches transactions for every configured account and appends the ones not
-     * already present in the spreadsheet. Dedupe uses the TransactionId column, so
-     * repeated runs append nothing new (idempotency). Exits 0 on success and 1 on
-     * missing configuration or provider/Sheets errors.
+     * already present in the spreadsheet. Each row is labeled with the source
+     * account (provider display name, falling back to the account id). Dedupe is
+     * global on the TransactionId column, so repeated runs append nothing new
+     * (idempotency). Exits 0 on success and 1 on missing configuration or
+     * provider/Sheets errors.
      */
     private int sync() {
         AppConfig resolved = requireFetchConfig("sync");
@@ -225,17 +227,21 @@ public final class Main {
             GoogleSheetsClient sheetsClient = sheets.get();
             Set<String> existing = sheetsClient.existingTransactionIds();
             TransactionSource source = sources.apply(resolved);
+            Map<String, String> accountLabels = new HashMap<>();
+            for (Account account : source.listAccounts()) {
+                accountLabels.put(account.id(), account.name().isBlank() ? account.id() : account.name());
+            }
             List<SheetRow> toAppend = new ArrayList<>();
             int fetched = 0;
             for (AccountConfig account : resolved.accounts()) {
+                String label = accountLabels.getOrDefault(account.providerAccountId(), account.providerAccountId());
                 for (Transaction transaction : source.fetchTransactions(account.providerAccountId())) {
                     fetched++;
                     if (!existing.add(transaction.id())) {
                         continue;
                     }
                     toAppend.add(new SheetRow(transaction.madeOn().toString(), transaction.description(),
-                            transaction.amount(), transaction.currency(), transaction.id(),
-                            account.providerAccountId()));
+                            transaction.amount(), transaction.currency(), transaction.id(), label));
                 }
             }
             sheetsClient.appendRows(toAppend);

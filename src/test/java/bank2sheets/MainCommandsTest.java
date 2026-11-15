@@ -136,6 +136,8 @@ class MainCommandsTest {
     @Test
     void enableBankingSyncAppendsThenIsIdempotent() throws IOException {
         FakeHttp http = new FakeHttp(EB_BASE);
+        http.stub("/sessions/sess-eb-1", "{\"status\": \"AUTHORIZED\", \"accounts\": [\"uuid-1\"]}");
+        http.stub("/accounts/uuid-1/details", "{\"name\": \"Cuenta Nominas\"}");
         http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", """
                 {"transactions": [
                   {"entry_reference": "ref-1", "credit_debit_indicator": "CRDT",
@@ -156,11 +158,13 @@ class MainCommandsTest {
         Result first = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
         assertEquals(0, first.exitCode());
         assertTrue(first.stdout().contains("appended 1 new row(s)"));
-
-        // Mark the appended TransactionId as already present, then sync again.
         String appendBody = sheets.requests.stream()
                 .filter(r -> "POST".equals(r.method()) && r.url().endsWith(":append?valueInputOption=RAW"))
                 .findFirst().orElseThrow().body();
+        assertEquals("Cuenta Nominas", JsonParser.parseString(appendBody).getAsJsonObject()
+                .getAsJsonArray("values").get(0).getAsJsonArray().get(5).getAsString());
+
+        // Mark the appended TransactionId as already present, then sync again.
         String transactionId = JsonParser.parseString(appendBody).getAsJsonObject()
                 .getAsJsonArray("values").get(0).getAsJsonArray().get(4).getAsString();
         sheets.stub("/sheet-1/values/E2:E", "{\"values\": [[\"" + transactionId + "\"]]}");
@@ -168,6 +172,95 @@ class MainCommandsTest {
         Result second = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
         assertEquals(0, second.exitCode());
         assertTrue(second.stdout().contains("appended 0 new row(s), skipped 1 duplicate(s)"));
+    }
+
+    @Test
+    void enableBankingSyncLabelsRowsPerAccountAndStaysIdempotent() throws IOException {
+        FakeHttp http = new FakeHttp(EB_BASE);
+        http.stub("/sessions/sess-eb-1", "{\"status\": \"AUTHORIZED\", \"accounts\": [\"uuid-1\", \"uuid-2\"]}");
+        http.stub("/accounts/uuid-1/details", "{\"name\": \"Cuenta Nominas\"}");
+        http.stub("/accounts/uuid-2/details", "{\"name\": \"Cuenta Ahorro\"}");
+        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", """
+                {"transactions": [
+                  {"entry_reference": "ref-1", "credit_debit_indicator": "CRDT",
+                   "transaction_amount": {"amount": "1200.50", "currency": "EUR"},
+                   "remittance_information": ["Nomina"],
+                   "booking_date": "2026-08-01"}
+                ]}
+                """);
+        http.stub("/accounts/uuid-2/transactions?transaction_status=BOOK", """
+                {"transactions": [
+                  {"entry_reference": "ref-2", "credit_debit_indicator": "DRDT",
+                   "transaction_amount": {"amount": "30.10", "currency": "EUR"},
+                   "remittance_information": ["Compra"],
+                   "booking_date": "2026-08-02"}
+                ]}
+                """);
+        FakeHttp sheets = SheetsTestSupport.fakeHttp();
+        stubReadySheet(sheets);
+        sheets.stub("/sheet-1/values/E2:E", "{}");
+        Path stateFile = tempDir.resolve("state.properties");
+        Files.writeString(stateFile, "enablebanking.session_id=sess-eb-1\n");
+        AppConfig cfg = new AppConfig("app-1", TestKeys.base64Pem(),
+                "http://127.0.0.1:8765/bank2sheets/callback", "sess-eb-1",
+                List.of(new AccountConfig("enablebanking", "uuid-1"),
+                        new AccountConfig("enablebanking", "uuid-2")));
+        Main main = new Main(c -> enableBankingClient(cfg, http), () -> cfg,
+                () -> new GoogleSheetsClient(SheetsTestSupport.config(), sheets), stateFile, () -> { });
+
+        Result first = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
+        assertEquals(0, first.exitCode());
+        assertTrue(first.stdout().contains("appended 2 new row(s)"));
+        List<String> appendBodies = sheets.requests.stream()
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith(":append?valueInputOption=RAW"))
+                .map(r -> r.body()).toList();
+        JsonArray values = JsonParser.parseString(appendBodies.get(0)).getAsJsonObject()
+                .getAsJsonArray("values");
+        assertEquals(2, values.size());
+        assertEquals("Cuenta Nominas", values.get(0).getAsJsonArray().get(5).getAsString());
+        assertEquals("Cuenta Ahorro", values.get(1).getAsJsonArray().get(5).getAsString());
+
+        // Mark both appended TransactionIds as already present, then sync again.
+        String firstId = values.get(0).getAsJsonArray().get(4).getAsString();
+        String secondId = values.get(1).getAsJsonArray().get(4).getAsString();
+        sheets.stub("/sheet-1/values/E2:E",
+                "{\"values\": [[\"" + firstId + "\"], [\"" + secondId + "\"]]}");
+
+        Result second = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
+        assertEquals(0, second.exitCode());
+        assertTrue(second.stdout().contains("appended 0 new row(s), skipped 2 duplicate(s)"));
+    }
+
+    @Test
+    void enableBankingSyncFallsBackToAccountIdWhenNameBlank() throws IOException {
+        FakeHttp http = new FakeHttp(EB_BASE);
+        http.stub("/sessions/sess-eb-1", "{\"status\": \"AUTHORIZED\", \"accounts\": [\"uuid-1\"]}");
+        http.stub("/accounts/uuid-1/details", "{\"name\": \"\"}");
+        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", """
+                {"transactions": [
+                  {"entry_reference": "ref-1", "credit_debit_indicator": "CRDT",
+                   "transaction_amount": {"amount": "1200.50", "currency": "EUR"},
+                   "remittance_information": ["Nomina"],
+                   "booking_date": "2026-08-01"}
+                ]}
+                """);
+        FakeHttp sheets = SheetsTestSupport.fakeHttp();
+        stubReadySheet(sheets);
+        sheets.stub("/sheet-1/values/E2:E", "{}");
+        Path stateFile = tempDir.resolve("state.properties");
+        Files.writeString(stateFile, "enablebanking.session_id=sess-eb-1\n");
+        AppConfig cfg = enableBankingConfig("sess-eb-1");
+        Main main = new Main(c -> enableBankingClient(cfg, http), () -> cfg,
+                () -> new GoogleSheetsClient(SheetsTestSupport.config(), sheets), stateFile, () -> { });
+
+        Result result = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
+
+        assertEquals(0, result.exitCode());
+        String appendBody = sheets.requests.stream()
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith(":append?valueInputOption=RAW"))
+                .findFirst().orElseThrow().body();
+        assertEquals("uuid-1", JsonParser.parseString(appendBody).getAsJsonObject()
+                .getAsJsonArray("values").get(0).getAsJsonArray().get(5).getAsString());
     }
 
     @Test
