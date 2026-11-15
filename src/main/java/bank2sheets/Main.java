@@ -13,11 +13,14 @@ import bank2sheets.sheets.SheetRow;
 import com.google.gson.JsonObject;
 import java.io.Console;
 import java.nio.file.Path;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -209,11 +212,13 @@ public final class Main {
 
     /**
      * Fetches transactions for every configured account and appends the ones not
-     * already present in the spreadsheet. Each row is labeled with the source
-     * account (provider display name, falling back to the account id). Dedupe is
-     * global on the TransactionId column, so repeated runs append nothing new
-     * (idempotency). Exits 0 on success and 1 on missing configuration or
-     * provider/Sheets errors.
+     * already present in their month tab. Each row is routed to the tab named
+     * after the transaction's calendar month ({@code YYYY-MM}, from
+     * {@code madeOn()}) and labeled with the source account (provider display
+     * name, falling back to the account id); tabs are created on demand. Dedupe
+     * is per month tab on the TransactionId column, plus an in-run id set, so
+     * repeated runs append nothing new (idempotency). Exits 0 on success and 1
+     * on missing configuration or provider/Sheets errors.
      */
     private int sync() {
         AppConfig resolved = requireFetchConfig("sync");
@@ -222,10 +227,10 @@ public final class Main {
         }
         try {
             GoogleSheetsClient sheetsClient = sheets.get();
-            Set<String> existing = sheetsClient.existingTransactionIds();
             TransactionSource source = sources.apply(resolved);
             Map<String, String> accountLabels = accountNames(source);
-            List<SheetRow> toAppend = new ArrayList<>();
+            Map<YearMonth, List<SheetRow>> byMonth = new TreeMap<>();
+            Set<String> seen = new HashSet<>();
             int fetched = 0;
             for (AccountConfig account : resolved.accounts()) {
                 String label = accountLabels.getOrDefault(account.providerAccountId(), "");
@@ -234,16 +239,32 @@ public final class Main {
                 }
                 for (Transaction transaction : source.fetchTransactions(account.providerAccountId())) {
                     fetched++;
-                    if (!existing.add(transaction.id())) {
+                    if (!seen.add(transaction.id())) {
                         continue;
                     }
-                    toAppend.add(new SheetRow(transaction.madeOn().toString(), transaction.description(),
-                            transaction.amount(), transaction.currency(), transaction.id(), label));
+                    YearMonth month = YearMonth.from(transaction.madeOn());
+                    byMonth.computeIfAbsent(month, m -> new ArrayList<>())
+                            .add(new SheetRow(transaction.madeOn().toString(), transaction.description(),
+                                    transaction.amount(), transaction.currency(), transaction.id(), label));
                 }
             }
-            sheetsClient.appendRows(toAppend);
-            System.out.println("sync: fetched " + fetched + " transaction(s), appended " + toAppend.size()
-                    + " new row(s), skipped " + (fetched - toAppend.size()) + " duplicate(s)");
+            int appended = 0;
+            for (Map.Entry<YearMonth, List<SheetRow>> entry : byMonth.entrySet()) {
+                YearMonth month = entry.getKey();
+                Set<String> existing = sheetsClient.existingTransactionIds(month);
+                List<SheetRow> fresh = new ArrayList<>();
+                for (SheetRow row : entry.getValue()) {
+                    if (existing.add(row.transactionId())) {
+                        fresh.add(row);
+                    }
+                }
+                if (!fresh.isEmpty()) {
+                    sheetsClient.appendRows(month, fresh);
+                    appended += fresh.size();
+                }
+            }
+            System.out.println("sync: fetched " + fetched + " transaction(s), appended " + appended
+                    + " new row(s), skipped " + (fetched - appended) + " duplicate(s)");
             return 0;
         } catch (Bank2SheetsException | IllegalStateException e) {
             System.err.println("sync: " + e.getMessage());

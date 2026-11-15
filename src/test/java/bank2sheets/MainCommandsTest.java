@@ -18,6 +18,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -145,7 +147,8 @@ class MainCommandsTest {
         stubAccountDetails(http, "uuid-1", "Cuenta Nominas");
         http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", NOMINA_TRANSACTION_JSON);
         FakeHttp sheets = SheetsTestSupport.fakeHttp();
-        stubReadySheet(sheets);
+        stubSpreadsheetTitles(sheets, "2026-08");
+        stubMonthSheet(sheets, "2026-08");
         Path stateFile = sessionState();
         AppConfig cfg = enableBankingConfig("sess-eb-1");
         Main main = mainFor(cfg, http, sheets, stateFile);
@@ -162,7 +165,7 @@ class MainCommandsTest {
         // Mark the appended TransactionId as already present, then sync again.
         String transactionId = JsonParser.parseString(appendBody).getAsJsonObject()
                 .getAsJsonArray("values").get(0).getAsJsonArray().get(4).getAsString();
-        sheets.stub("/sheet-1/values/E2:E", "{\"values\": [[\"" + transactionId + "\"]]}");
+        sheets.stub("/sheet-1/values/'2026-08'!E2:E", "{\"values\": [[\"" + transactionId + "\"]]}");
 
         Result second = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
         assertEquals(0, second.exitCode());
@@ -185,7 +188,8 @@ class MainCommandsTest {
                 ]}
                 """);
         FakeHttp sheets = SheetsTestSupport.fakeHttp();
-        stubReadySheet(sheets);
+        stubSpreadsheetTitles(sheets, "2026-08");
+        stubMonthSheet(sheets, "2026-08");
         Path stateFile = sessionState();
         AppConfig cfg = new AppConfig("app-1", TestKeys.base64Pem(),
                 "http://127.0.0.1:8765/bank2sheets/callback", "sess-eb-1",
@@ -208,7 +212,7 @@ class MainCommandsTest {
         // Mark both appended TransactionIds as already present, then sync again.
         String firstId = values.get(0).getAsJsonArray().get(4).getAsString();
         String secondId = values.get(1).getAsJsonArray().get(4).getAsString();
-        sheets.stub("/sheet-1/values/E2:E",
+        sheets.stub("/sheet-1/values/'2026-08'!E2:E",
                 "{\"values\": [[\"" + firstId + "\"], [\"" + secondId + "\"]]}");
 
         Result second = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
@@ -223,7 +227,8 @@ class MainCommandsTest {
         stubAccountDetails(http, "uuid-1", "");
         http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", NOMINA_TRANSACTION_JSON);
         FakeHttp sheets = SheetsTestSupport.fakeHttp();
-        stubReadySheet(sheets);
+        stubSpreadsheetTitles(sheets, "2026-08");
+        stubMonthSheet(sheets, "2026-08");
         Path stateFile = sessionState();
         AppConfig cfg = enableBankingConfig("sess-eb-1");
         Main main = mainFor(cfg, http, sheets, stateFile);
@@ -236,6 +241,112 @@ class MainCommandsTest {
                 .findFirst().orElseThrow().body();
         assertEquals("uuid-1", JsonParser.parseString(appendBody).getAsJsonObject()
                 .getAsJsonArray("values").get(0).getAsJsonArray().get(5).getAsString());
+    }
+
+    @Test
+    void enableBankingSyncCreatesOneTabPerMonthAndRoutesRows() throws IOException {
+        FakeHttp http = new FakeHttp(EB_BASE);
+        stubSession(http, "[\"uuid-1\"]");
+        stubAccountDetails(http, "uuid-1", "Cuenta Nominas");
+        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", """
+                {"transactions": [
+                  {"entry_reference": "ref-1", "credit_debit_indicator": "CRDT",
+                   "transaction_amount": {"amount": "1200.50", "currency": "EUR"},
+                   "remittance_information": ["Nomina"],
+                   "booking_date": "2026-07-31"},
+                  {"entry_reference": "ref-2", "credit_debit_indicator": "DRDT",
+                   "transaction_amount": {"amount": "30.10", "currency": "EUR"},
+                   "remittance_information": ["Compra"],
+                   "booking_date": "2026-08-01"}
+                ]}
+                """);
+        FakeHttp sheets = SheetsTestSupport.fakeHttp();
+        stubSpreadsheetTitles(sheets, "Hoja 1");
+        sheets.stub("/sheet-1:batchUpdate", "{\"spreadsheetId\":\"sheet-1\"}");
+        stubMonthSheet(sheets, "2026-07");
+        stubMonthSheet(sheets, "2026-08");
+        Path stateFile = sessionState();
+        AppConfig cfg = enableBankingConfig("sess-eb-1");
+        Main main = mainFor(cfg, http, sheets, stateFile);
+
+        Result first = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
+        assertEquals(0, first.exitCode());
+        assertTrue(first.stdout().contains("appended 2 new row(s)"));
+
+        // Two distinct addSheet bodies, one per month.
+        List<String> addSheetBodies = sheets.requests.stream()
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("/sheet-1:batchUpdate"))
+                .map(r -> r.body()).toList();
+        assertEquals(2, addSheetBodies.size());
+        Set<String> createdTitles = new java.util.HashSet<>();
+        for (String body : addSheetBodies) {
+            createdTitles.add(JsonParser.parseString(body).getAsJsonObject()
+                    .getAsJsonArray("requests").get(0).getAsJsonObject()
+                    .getAsJsonObject("addSheet").getAsJsonObject("properties").get("title").getAsString());
+        }
+        assertEquals(Set.of("2026-07", "2026-08"), createdTitles);
+
+        // Two quoted appends; each contains exactly the row whose Fecha matches its tab.
+        List<FakeHttp.Request> appends = sheets.requests.stream()
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith(":append?valueInputOption=RAW"))
+                .toList();
+        assertEquals(2, appends.size());
+        Map<String, String> appendedIdsByMonth = new java.util.HashMap<>();
+        for (FakeHttp.Request append : appends) {
+            String month = append.url().contains("'2026-07'!") ? "2026-07" : "2026-08";
+            JsonArray rows = JsonParser.parseString(append.body()).getAsJsonObject().getAsJsonArray("values");
+            assertEquals(1, rows.size());
+            assertEquals(month, rows.get(0).getAsJsonArray().get(0).getAsString().substring(0, 7));
+            appendedIdsByMonth.put(month, rows.get(0).getAsJsonArray().get(4).getAsString());
+        }
+
+        // Mark both months' ids as present and re-stub metadata with the created tabs, then sync again.
+        stubSpreadsheetTitles(sheets, "Hoja 1", "2026-07", "2026-08");
+        sheets.stub("/sheet-1/values/'2026-07'!E2:E",
+                "{\"values\": [[\"" + appendedIdsByMonth.get("2026-07") + "\"]]}");
+        sheets.stub("/sheet-1/values/'2026-08'!E2:E",
+                "{\"values\": [[\"" + appendedIdsByMonth.get("2026-08") + "\"]]}");
+
+        Result second = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
+        assertEquals(0, second.exitCode());
+        assertTrue(second.stdout().contains("appended 0 new row(s), skipped 2 duplicate(s)"));
+        assertEquals(2, sheets.requests.stream()
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("/sheet-1:batchUpdate")).count());
+    }
+
+    @Test
+    void enableBankingSyncSkipsAppendForAllDuplicateMonth() throws IOException {
+        FakeHttp http = new FakeHttp(EB_BASE);
+        stubSession(http, "[\"uuid-1\"]");
+        stubAccountDetails(http, "uuid-1", "Cuenta Nominas");
+        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", NOMINA_TRANSACTION_JSON);
+        FakeHttp sheets = SheetsTestSupport.fakeHttp();
+        stubSpreadsheetTitles(sheets, "2026-08");
+        stubMonthSheet(sheets, "2026-08");
+        Path stateFile = sessionState();
+        AppConfig cfg = enableBankingConfig("sess-eb-1");
+        Main main = mainFor(cfg, http, sheets, stateFile);
+
+        // Run 1: appends the row; capture the appended id and the request count.
+        Result first = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
+        assertEquals(0, first.exitCode());
+        assertTrue(first.stdout().contains("appended 1 new row(s)"));
+        String appendBody = sheets.requests.stream()
+                .filter(r -> "POST".equals(r.method())
+                        && r.url().endsWith("/values/'2026-08'!A1:F:append?valueInputOption=RAW"))
+                .findFirst().orElseThrow().body();
+        String transactionId = JsonParser.parseString(appendBody).getAsJsonObject()
+                .getAsJsonArray("values").get(0).getAsJsonArray().get(4).getAsString();
+        int requestsAfterRun1 = sheets.requests.size();
+
+        // Run 2: the month tab already holds the id; no append may happen.
+        sheets.stub("/sheet-1/values/'2026-08'!E2:E", "{\"values\": [[\"" + transactionId + "\"]]}");
+
+        Result second = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
+        assertEquals(0, second.exitCode());
+        assertTrue(second.stdout().contains("appended 0 new row(s), skipped 1 duplicate(s)"));
+        assertTrue(sheets.requests.stream().skip(requestsAfterRun1)
+                .noneMatch(r -> r.url().contains(":append")));
     }
 
     @Test
@@ -309,10 +420,12 @@ class MainCommandsTest {
     @Test
     void syncWithSheetsErrorExitsNonZero() throws IOException {
         FakeHttp http = new FakeHttp(EB_BASE);
+        stubSession(http, "[\"uuid-1\"]");
+        stubAccountDetails(http, "uuid-1", "Cuenta Nominas");
         http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", NOMINA_TRANSACTION_JSON);
         FakeHttp sheets = SheetsTestSupport.fakeHttp();
-        SheetsTestSupport.stubToken(sheets);
-        sheets.stub("/sheet-1/values/E2:E", 403, "{\"error\":{\"message\":\"permission denied\"}}");
+        stubSpreadsheetTitles(sheets, "2026-08");
+        sheets.stub("/sheet-1/values/'2026-08'!E2:E", 403, "{\"error\":{\"message\":\"permission denied\"}}");
         Path stateFile = sessionState();
 
         Result result = runEnableBanking(http, sheets, stateFile, enableBankingConfig(""), "sync");
@@ -405,11 +518,25 @@ class MainCommandsTest {
         http.stub("/accounts/" + uuid + "/details", "{\"name\": \"" + name + "\"}");
     }
 
-    /** Stubs a Sheets backend with a valid token, the header row, an empty id column, and a successful append. */
-    private static void stubReadySheet(FakeHttp sheets) {
+    /** Stubs the spreadsheet metadata response with the given tab titles. */
+    private static void stubSpreadsheetTitles(FakeHttp sheets, String... titles) {
         SheetsTestSupport.stubToken(sheets);
-        sheets.stub("/sheet-1/values/A1:F1", HEADER_JSON);
-        sheets.stub("/sheet-1/values/E2:E", "{}");
-        sheets.stub("/sheet-1/values/A1:F:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
+        StringBuilder json = new StringBuilder("{\"sheets\":[");
+        for (int i = 0; i < titles.length; i++) {
+            if (i > 0) {
+                json.append(",");
+            }
+            json.append("{\"properties\":{\"title\":\"").append(titles[i]).append("\"}}");
+        }
+        json.append("]}");
+        sheets.stub("/sheet-1?fields=sheets.properties.title", json.toString());
+    }
+
+    /** Stubs one existing month tab: header row, empty id column, and a successful append. */
+    private static void stubMonthSheet(FakeHttp sheets, String month) {
+        sheets.stub("/sheet-1/values/'" + month + "'!A1:F1", HEADER_JSON);
+        sheets.stub("/sheet-1/values/'" + month + "'!E2:E", "{}");
+        sheets.stub("/sheet-1/values/'" + month + "'!A1:F:append?valueInputOption=RAW",
+                "{\"spreadsheetId\":\"sheet-1\"}");
     }
 }

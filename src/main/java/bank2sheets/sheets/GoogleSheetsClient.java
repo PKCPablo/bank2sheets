@@ -16,6 +16,7 @@ import bank2sheets.http.Rs256Jwt;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.YearMonth;
 import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
@@ -31,22 +32,22 @@ import java.util.Set;
  * with an in-memory fake, so no real Google API call happens outside manual owner
  * validation.
  *
- * <p>Target layout (first sheet, columns A..F):
- * {@code Fecha, Descripción, Importe, Moneda, TransactionId, Cuenta}. Rows are
- * appended with {@code valueInputOption=RAW}, so amounts sent as JSON numbers
- * become numeric cells and descriptive text stays literal (no date/formula
- * parsing). The header row is written once when missing; on a legacy five-column
- * sheet only the missing {@code F1 = "Cuenta"} cell is backfilled. TransactionId
- * is the dedupe key.
+ * <p>Target layout: one tab per {@code YYYY-MM} (e.g. {@code 2026-11}), columns
+ * A..F: {@code Fecha, Descripción, Importe, Moneda, TransactionId, Cuenta}.
+ * Rows are appended with {@code valueInputOption=RAW}, so amounts sent as JSON
+ * numbers become numeric cells and descriptive text stays literal (no
+ * date/formula parsing). The header row is written once per tab when missing; on
+ * a legacy five-column tab only the missing {@code F1 = "Cuenta"} cell is
+ * backfilled. TransactionId is the dedupe key.
  */
 public final class GoogleSheetsClient {
 
     private static final String API_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
     private static final String TOKEN_URI = "https://oauth2.googleapis.com/token";
     private static final String SCOPE = "https://www.googleapis.com/auth/spreadsheets";
-    private static final String RANGE = "A1:F";
-    private static final String HEADER_RANGE = "A1:F1";
-    private static final String IDS_RANGE = "E2:E";
+    private static final String RANGE_SUFFIX = "!A1:F";
+    private static final String HEADER_RANGE_SUFFIX = "!A1:F1";
+    private static final String IDS_RANGE_SUFFIX = "!E2:E";
     private static final String VALUE_INPUT_OPTION = "RAW";
     /** Header row; order must match {@link SheetRow#values()} (columns A..F). */
     private static final List<Object> HEADER_VALUES =
@@ -56,6 +57,9 @@ public final class GoogleSheetsClient {
     private final SheetsConfig config;
     private final HttpExchange http;
     private String accessToken;
+    /** Titles of the spreadsheet tabs, loaded lazily once per client instance. */
+    private final Set<String> sheetTitles = new HashSet<>();
+    private boolean sheetTitlesLoaded;
 
     public GoogleSheetsClient(SheetsConfig config, HttpExchange http) {
         this.config = config;
@@ -73,9 +77,11 @@ public final class GoogleSheetsClient {
         return new GoogleSheetsClient(config, new RealHttpExchange());
     }
 
-    /** Returns the transaction ids already present in the TransactionId column (header excluded). */
-    public Set<String> existingTransactionIds() {
-        JsonObject result = readValues(IDS_RANGE, accessToken());
+    /** Returns the transaction ids already present in the month tab's TransactionId column (header excluded). */
+    public Set<String> existingTransactionIds(YearMonth month) {
+        String sheet = month.toString();
+        ensureSheet(sheet);
+        JsonObject result = readValues(quoted(sheet) + IDS_RANGE_SUFFIX, accessToken());
         Set<String> ids = new HashSet<>();
         JsonArray values = result.has("values") ? result.getAsJsonArray("values") : new JsonArray();
         for (JsonElement row : values) {
@@ -91,26 +97,74 @@ public final class GoogleSheetsClient {
     }
 
     /**
-     * Appends the given rows in one batch after the header. When the sheet has no
-     * header yet, the header row is written first so a fresh spreadsheet gets the
-     * expected columns. On a legacy five-column sheet (A1 already "Fecha" but F1
-     * missing or blank), exactly one update writes {@code F1 = "Cuenta"} before
-     * the data append; a non-blank F1 is never overwritten. Empty input does
-     * nothing.
+     * Appends the given rows to the month tab in one batch after the header.
+     * When the tab has no header yet, the header row is written first so a fresh
+     * tab gets the expected columns. On a legacy five-column tab (A1 already
+     * "Fecha" but F1 missing or blank), exactly one update writes
+     * {@code F1 = "Cuenta"} before the data append; a non-blank F1 is never
+     * overwritten. Empty input does nothing (no HTTP calls).
      */
-    public void appendRows(List<SheetRow> rows) {
+    public void appendRows(YearMonth month, List<SheetRow> rows) {
         if (rows.isEmpty()) {
             return;
         }
+        String sheet = month.toString();
+        ensureSheet(sheet);
+        String sheetPrefix = quoted(sheet);
         String token = accessToken();
-        JsonArray headerRow = readHeaderRow(token);
+        JsonArray headerRow = readHeaderRow(token, sheetPrefix + HEADER_RANGE_SUFFIX);
         int lastHeaderIndex = HEADER_VALUES.size() - 1;
         if (headerRow == null || !HEADER_VALUES.get(0).equals(stringAt(headerRow, 0))) {
-            appendValues(token, toValuesJson(List.of(HEADER_VALUES)));
+            appendValues(token, sheetPrefix + RANGE_SUFFIX, toValuesJson(List.of(HEADER_VALUES)));
         } else if (stringAt(headerRow, lastHeaderIndex).isBlank()) {
-            updateValues(token, "F1", toValuesJson(List.of(List.of(HEADER_VALUES.get(lastHeaderIndex)))));
+            updateValues(token, sheetPrefix + "!F1",
+                    toValuesJson(List.of(List.of(HEADER_VALUES.get(lastHeaderIndex)))));
         }
-        appendValues(token, toValuesJson(rows.stream().map(SheetRow::values).toList()));
+        appendValues(token, sheetPrefix + RANGE_SUFFIX,
+                toValuesJson(rows.stream().map(SheetRow::values).toList()));
+    }
+
+    /**
+     * Ensures a tab titled {@code title} exists: on first use, loads the
+     * spreadsheet's tab titles once ({@code ?fields=sheets.properties.title});
+     * on a miss, creates the tab with a single {@code addSheet} batchUpdate and
+     * caches it for the rest of the run.
+     */
+    private void ensureSheet(String title) {
+        if (!sheetTitlesLoaded) {
+            Response response = http.exchange("GET",
+                    API_BASE + "/" + config.spreadsheetId() + "?fields=sheets.properties.title",
+                    Map.of("Authorization", "Bearer " + accessToken()), null);
+            requireOk(response, "metadata");
+            JsonObject spreadsheet = JsonSupport.parseObject(response.body());
+            if (spreadsheet.has("sheets")) {
+                for (JsonElement sheet : spreadsheet.getAsJsonArray("sheets")) {
+                    JsonObject properties = sheet.getAsJsonObject().getAsJsonObject("properties");
+                    if (properties != null && properties.has("title")) {
+                        sheetTitles.add(properties.get("title").getAsString());
+                    }
+                }
+            }
+            sheetTitlesLoaded = true;
+        }
+        if (!sheetTitles.contains(title)) {
+            JsonObject request = new JsonObject();
+            request.addProperty("title", title);
+            JsonObject addSheet = new JsonObject();
+            addSheet.add("properties", request);
+            JsonObject body = new JsonObject();
+            JsonArray requests = new JsonArray();
+            JsonObject wrapper = new JsonObject();
+            wrapper.add("addSheet", addSheet);
+            requests.add(wrapper);
+            body.add("requests", requests);
+            Response response = http.exchange("POST",
+                    API_BASE + "/" + config.spreadsheetId() + ":batchUpdate",
+                    Map.of("Authorization", "Bearer " + accessToken(), "Content-Type", "application/json"),
+                    body.toString());
+            requireOk(response, "add sheet");
+            sheetTitles.add(title);
+        }
     }
 
     /** Serializes rows to the append body: {@code {"values": [[...]]}} with amounts as JSON numbers. */
@@ -118,9 +172,9 @@ public final class GoogleSheetsClient {
         return GSON.toJson(Map.of("values", rows));
     }
 
-    /** First row of {@link #HEADER_RANGE}, or {@code null} when the sheet is empty. */
-    private JsonArray readHeaderRow(String token) {
-        JsonObject result = readValues(HEADER_RANGE, token);
+    /** First row of the tab's header range, or {@code null} when the tab is empty. */
+    private JsonArray readHeaderRow(String token, String range) {
+        JsonObject result = readValues(range, token);
         if (!result.has("values")) {
             return null;
         }
@@ -215,8 +269,8 @@ public final class GoogleSheetsClient {
         return JsonSupport.parseObject(response.body());
     }
 
-    private void appendValues(String token, String body) {
-        Response response = http.exchange("POST", appendUrl(),
+    private void appendValues(String token, String range, String body) {
+        Response response = http.exchange("POST", appendUrl(range),
                 Map.of("Authorization", "Bearer " + token, "Content-Type", "application/json"), body);
         requireOk(response, "append");
     }
@@ -229,12 +283,18 @@ public final class GoogleSheetsClient {
     }
 
     private String valuesUrl(String range) {
-        // Spreadsheet ids and A1 ranges contain only URL-safe characters, so no
+        // Spreadsheet ids and A1 ranges contain only URL-safe characters (the
+        // quoted month title's apostrophe is a legal URI sub-delim), so no
         // encoding: URLEncoder would turn the range colon into %3A.
         return API_BASE + "/" + config.spreadsheetId() + "/values/" + range;
     }
 
-    private String appendUrl() {
-        return valuesUrl(RANGE) + ":append?valueInputOption=" + VALUE_INPUT_OPTION;
+    private String appendUrl(String range) {
+        return valuesUrl(range) + ":append?valueInputOption=" + VALUE_INPUT_OPTION;
+    }
+
+    /** Quotes a tab title for use in an A1 range: {@code '2026-11'!A1:F}. */
+    private static String quoted(String sheet) {
+        return "'" + sheet + "'";
     }
 }

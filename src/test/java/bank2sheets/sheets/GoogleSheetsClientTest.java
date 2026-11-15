@@ -10,9 +10,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import bank2sheets.config.SheetsConfig;
 import bank2sheets.http.FakeHttp;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.YearMonth;
 import java.util.Base64;
 import java.util.List;
 import java.util.Set;
@@ -33,34 +35,81 @@ class GoogleSheetsClientTest {
     }
 
     @Test
-    void existingTransactionIdsSkipsHeaderAndParsesColumnE() {
+    void existingTransactionIdsForExistingMonthReadsQuotedRange() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1/values/E2:E",
+        http.stub("/sheet-1?fields=sheets.properties.title",
+                "{\"sheets\":[{\"properties\":{\"title\":\"2026-08\"}}]}");
+        http.stub("/sheet-1/values/'2026-08'!E2:E",
                 """
-                {"range":"Sheet1!E2:E","majorDimension":"ROWS","values":[["t1"],["t2"],[""]]}
+                {"range":"'2026-08'!E2:E","majorDimension":"ROWS","values":[["t1"],["t2"],[""]]}
                 """);
         GoogleSheetsClient client = client(http);
 
-        assertEquals(Set.of("t1", "t2"), client.existingTransactionIds());
+        assertEquals(Set.of("t1", "t2"), client.existingTransactionIds(YearMonth.of(2026, 8)));
+
+        assertEquals(1, http.requests.stream()
+                .filter(r -> r.url().endsWith("/sheet-1?fields=sheets.properties.title")).count());
+        assertTrue(http.requests.stream().noneMatch(r -> r.url().contains(":batchUpdate")));
+    }
+
+    @Test
+    void existingTransactionIdsForMissingMonthCreatesSheetThenReads() {
+        FakeHttp http = SheetsTestSupport.fakeHttp();
+        http.stub("/sheet-1?fields=sheets.properties.title",
+                "{\"sheets\":[{\"properties\":{\"title\":\"Hoja 1\"}}]}");
+        http.stub("/sheet-1:batchUpdate", "{\"spreadsheetId\":\"sheet-1\"}");
+        http.stub("/sheet-1/values/'2026-11'!E2:E", "{}");
+        http.stub("/sheet-1/values/'2026-12'!E2:E", "{}");
+        GoogleSheetsClient client = client(http);
+
+        assertTrue(client.existingTransactionIds(YearMonth.of(2026, 11)).isEmpty());
+
+        // requests: 0=token, 1=metadata, 2=addSheet, 3=read
+        assertEquals(4, http.requests.size());
+        FakeHttp.Request addSheet = http.requests.get(2);
+        assertEquals("POST", addSheet.method());
+        assertEquals("https://sheets.googleapis.com/v4/spreadsheets/sheet-1:batchUpdate", addSheet.url());
+        JsonObject body = JsonParser.parseString(addSheet.body()).getAsJsonObject();
+        assertEquals("2026-11",
+                body.getAsJsonArray("requests").get(0).getAsJsonObject()
+                        .getAsJsonObject("addSheet").getAsJsonObject("properties").get("title").getAsString());
+        assertEquals(1, body.getAsJsonArray("requests").size());
+        FakeHttp.Request read = http.requests.get(3);
+        assertEquals("https://sheets.googleapis.com/v4/spreadsheets/sheet-1/values/'2026-11'!E2:E", read.url());
+
+        // Second month: metadata GET stays at one, a second addSheet names the second month.
+        assertTrue(client.existingTransactionIds(YearMonth.of(2026, 12)).isEmpty());
+        assertEquals(1, http.requests.stream()
+                .filter(r -> r.url().endsWith("/sheet-1?fields=sheets.properties.title")).count());
+        FakeHttp.Request secondAddSheet = http.requests.get(4);
+        assertEquals("POST", secondAddSheet.method());
+        JsonObject secondBody = JsonParser.parseString(secondAddSheet.body()).getAsJsonObject();
+        assertEquals("2026-12",
+                secondBody.getAsJsonArray("requests").get(0).getAsJsonObject()
+                        .getAsJsonObject("addSheet").getAsJsonObject("properties").get("title").getAsString());
     }
 
     @Test
     void existingTransactionIdsIsEmptyWhenSheetHasNoData() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1/values/E2:E", "{}");
+        http.stub("/sheet-1?fields=sheets.properties.title",
+                "{\"sheets\":[{\"properties\":{\"title\":\"2026-08\"}}]}");
+        http.stub("/sheet-1/values/'2026-08'!E2:E", "{}");
         GoogleSheetsClient client = client(http);
 
-        assertTrue(client.existingTransactionIds().isEmpty());
+        assertTrue(client.existingTransactionIds(YearMonth.of(2026, 8)).isEmpty());
     }
 
     @Test
     void tokenRequestUsesJwtBearerGrantAndCachesToken() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1/values/E2:E", "{}");
+        http.stub("/sheet-1?fields=sheets.properties.title",
+                "{\"sheets\":[{\"properties\":{\"title\":\"2026-08\"}}]}");
+        http.stub("/sheet-1/values/'2026-08'!E2:E", "{}");
         GoogleSheetsClient client = client(http);
 
-        client.existingTransactionIds();
-        client.existingTransactionIds();
+        client.existingTransactionIds(YearMonth.of(2026, 8));
+        client.existingTransactionIds(YearMonth.of(2026, 8));
 
         long tokenRequests = http.requests.stream()
                 .filter(r -> r.url().equals("https://oauth2.googleapis.com/token"))
@@ -79,23 +128,25 @@ class GoogleSheetsClientTest {
     @Test
     void appendRowsWritesHeaderThenDataWithAmountsAsNumbers() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1/values/A1:F1", "{}");
-        http.stub("/sheet-1/values/A1:F:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
+        http.stub("/sheet-1?fields=sheets.properties.title",
+                "{\"sheets\":[{\"properties\":{\"title\":\"2026-08\"}}]}");
+        http.stub("/sheet-1/values/'2026-08'!A1:F1", "{}");
+        http.stub("/sheet-1/values/'2026-08'!A1:F:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
         GoogleSheetsClient client = client(http);
 
-        client.appendRows(List.of(
+        client.appendRows(YearMonth.of(2026, 8), List.of(
                 new SheetRow("2026-08-01", "Nomina", new BigDecimal("1200.50"), "EUR", "t1", "Cuenta Principal"),
                 new SheetRow("2026-08-02", "Cafe", new BigDecimal("-3.20"), "EUR", "t2", "Cuenta Principal")));
 
-        // requests: 0=token, 1=header read, 2=header append, 3=data append
-        assertEquals(4, http.requests.size());
-        FakeHttp.Request headerAppend = http.requests.get(2);
+        // requests: 0=token, 1=metadata, 2=header read, 3=header append, 4=data append
+        assertEquals(5, http.requests.size());
+        FakeHttp.Request headerAppend = http.requests.get(3);
         assertEquals("POST", headerAppend.method());
         assertTrue(headerAppend.url().endsWith(":append?valueInputOption=RAW"));
         assertEquals("{\"values\":[[\"Fecha\",\"Descripción\",\"Importe\",\"Moneda\",\"TransactionId\",\"Cuenta\"]]}",
                 headerAppend.body());
 
-        FakeHttp.Request dataAppend = http.requests.get(3);
+        FakeHttp.Request dataAppend = http.requests.get(4);
         String body = dataAppend.body();
         assertFalse(body.contains("\"1200.50\""));
         JsonArray values = JsonParser.parseString(body).getAsJsonObject().getAsJsonArray("values");
@@ -113,40 +164,44 @@ class GoogleSheetsClientTest {
     @Test
     void appendRowsSkipsHeaderWhenAlreadyPresent() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1/values/A1:F1",
+        http.stub("/sheet-1?fields=sheets.properties.title",
+                "{\"sheets\":[{\"properties\":{\"title\":\"2026-08\"}}]}");
+        http.stub("/sheet-1/values/'2026-08'!A1:F1",
                 "{\"values\":[[\"Fecha\",\"Descripción\",\"Importe\",\"Moneda\",\"TransactionId\",\"Cuenta\"]]}");
-        http.stub("/sheet-1/values/A1:F:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
+        http.stub("/sheet-1/values/'2026-08'!A1:F:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
         GoogleSheetsClient client = client(http);
 
-        client.appendRows(List.of(
+        client.appendRows(YearMonth.of(2026, 8), List.of(
                 new SheetRow("2026-08-01", "Nomina", new BigDecimal("100"), "EUR", "t1", "Cuenta Principal")));
 
-        // token + header read + one data append (no header append, no backfill)
-        assertEquals(3, http.requests.size());
+        // token + metadata + header read + one data append (no header append, no backfill)
+        assertEquals(4, http.requests.size());
         assertEquals(2, http.requests.stream().filter(r -> "POST".equals(r.method())).count());
-        assertTrue(http.requests.get(2).url().endsWith(":append?valueInputOption=RAW"));
+        assertTrue(http.requests.get(3).url().endsWith(":append?valueInputOption=RAW"));
     }
 
     @Test
     void appendRowsBackfillsCuentaHeaderOnLegacyFiveColumnSheet() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1/values/A1:F1",
+        http.stub("/sheet-1?fields=sheets.properties.title",
+                "{\"sheets\":[{\"properties\":{\"title\":\"2026-08\"}}]}");
+        http.stub("/sheet-1/values/'2026-08'!A1:F1",
                 "{\"values\":[[\"Fecha\",\"Descripción\",\"Importe\",\"Moneda\",\"TransactionId\"]]}");
-        http.stub("/sheet-1/values/F1?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
-        http.stub("/sheet-1/values/A1:F:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
+        http.stub("/sheet-1/values/'2026-08'!F1?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
+        http.stub("/sheet-1/values/'2026-08'!A1:F:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
         GoogleSheetsClient client = client(http);
 
-        client.appendRows(List.of(
+        client.appendRows(YearMonth.of(2026, 8), List.of(
                 new SheetRow("2026-08-01", "Nomina", new BigDecimal("100"), "EUR", "t1", "Ahorro")));
 
-        // requests: 0=token, 1=header read, 2=F1 backfill PUT, 3=data append
-        assertEquals(4, http.requests.size());
-        FakeHttp.Request backfill = http.requests.get(2);
+        // requests: 0=token, 1=metadata, 2=header read, 3=F1 backfill PUT, 4=data append
+        assertEquals(5, http.requests.size());
+        FakeHttp.Request backfill = http.requests.get(3);
         assertEquals("PUT", backfill.method());
-        assertEquals("https://sheets.googleapis.com/v4/spreadsheets/sheet-1/values/F1?valueInputOption=RAW",
+        assertEquals("https://sheets.googleapis.com/v4/spreadsheets/sheet-1/values/'2026-08'!F1?valueInputOption=RAW",
                 backfill.url());
         assertEquals("{\"values\":[[\"Cuenta\"]]}", backfill.body());
-        FakeHttp.Request dataAppend = http.requests.get(3);
+        FakeHttp.Request dataAppend = http.requests.get(4);
         assertEquals("POST", dataAppend.method());
         assertTrue(dataAppend.url().endsWith(":append?valueInputOption=RAW"));
         assertEquals(1, JsonParser.parseString(dataAppend.body()).getAsJsonObject().getAsJsonArray("values").size());
@@ -155,16 +210,18 @@ class GoogleSheetsClientTest {
     @Test
     void appendRowsSkipsBackfillWhenCuentaHeaderIsPresent() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1/values/A1:F1",
+        http.stub("/sheet-1?fields=sheets.properties.title",
+                "{\"sheets\":[{\"properties\":{\"title\":\"2026-08\"}}]}");
+        http.stub("/sheet-1/values/'2026-08'!A1:F1",
                 "{\"values\":[[\"Fecha\",\"Descripción\",\"Importe\",\"Moneda\",\"TransactionId\",\"Otra cosa\"]]}");
-        http.stub("/sheet-1/values/A1:F:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
+        http.stub("/sheet-1/values/'2026-08'!A1:F:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
         GoogleSheetsClient client = client(http);
 
-        client.appendRows(List.of(
+        client.appendRows(YearMonth.of(2026, 8), List.of(
                 new SheetRow("2026-08-01", "Nomina", new BigDecimal("100"), "EUR", "t1", "Ahorro")));
 
-        // token + header read + one data append; no PUT to F1
-        assertEquals(3, http.requests.size());
+        // token + metadata + header read + one data append; no PUT to F1
+        assertEquals(4, http.requests.size());
         assertTrue(http.requests.stream().noneMatch(r -> "PUT".equals(r.method())));
     }
 
@@ -173,7 +230,7 @@ class GoogleSheetsClientTest {
         FakeHttp http = SheetsTestSupport.fakeHttp();
         GoogleSheetsClient client = client(http);
 
-        client.appendRows(List.of());
+        client.appendRows(YearMonth.of(2026, 8), List.of());
 
         assertTrue(http.requests.isEmpty());
     }
@@ -197,7 +254,8 @@ class GoogleSheetsClientTest {
         FakeHttp http = SheetsTestSupport.fakeHttp();
         GoogleSheetsClient client = new GoogleSheetsClient(new SheetsConfig("not-base64!!", "sheet-1"), http);
 
-        Bank2SheetsException error = assertThrows(Bank2SheetsException.class, client::existingTransactionIds);
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
+                () -> client.existingTransactionIds(YearMonth.of(2026, 8)));
         assertTrue(error.getMessage().contains("GOOGLE_SERVICE_ACCOUNT_B64"));
     }
 
@@ -208,29 +266,62 @@ class GoogleSheetsClientTest {
                 .encodeToString("{\"type\":\"service_account\"}".getBytes(StandardCharsets.UTF_8));
         GoogleSheetsClient client = new GoogleSheetsClient(new SheetsConfig(b64, "sheet-1"), http);
 
-        Bank2SheetsException error = assertThrows(Bank2SheetsException.class, client::existingTransactionIds);
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
+                () -> client.existingTransactionIds(YearMonth.of(2026, 8)));
         assertTrue(error.getMessage().contains("client_email"));
+    }
+
+    @Test
+    void nonSuccessMetadataThrows() {
+        FakeHttp http = SheetsTestSupport.fakeHttp();
+        http.stub("/sheet-1?fields=sheets.properties.title", 403, "{\"error\":{\"message\":\"permission denied\"}}");
+        GoogleSheetsClient client = client(http);
+
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
+                () -> client.existingTransactionIds(YearMonth.of(2026, 8)));
+        assertTrue(error.getMessage().contains("metadata failed"));
+        assertTrue(error.getMessage().contains("403"));
+    }
+
+    @Test
+    void nonSuccessCreateSheetThrows() {
+        FakeHttp http = SheetsTestSupport.fakeHttp();
+        http.stub("/sheet-1?fields=sheets.properties.title",
+                "{\"sheets\":[{\"properties\":{\"title\":\"Hoja 1\"}}]}");
+        http.stub("/sheet-1:batchUpdate", 500, "{\"error\":{\"message\":\"boom\"}}");
+        GoogleSheetsClient client = client(http);
+
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
+                () -> client.existingTransactionIds(YearMonth.of(2026, 11)));
+        assertTrue(error.getMessage().contains("add sheet failed"));
+        assertTrue(error.getMessage().contains("500"));
     }
 
     @Test
     void nonSuccessReadThrows() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1/values/E2:E", 403, "{\"error\":{\"message\":\"permission denied\"}}");
+        http.stub("/sheet-1?fields=sheets.properties.title",
+                "{\"sheets\":[{\"properties\":{\"title\":\"2026-08\"}}]}");
+        http.stub("/sheet-1/values/'2026-08'!E2:E", 403, "{\"error\":{\"message\":\"permission denied\"}}");
         GoogleSheetsClient client = client(http);
 
-        Bank2SheetsException error = assertThrows(Bank2SheetsException.class, client::existingTransactionIds);
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
+                () -> client.existingTransactionIds(YearMonth.of(2026, 8)));
         assertTrue(error.getMessage().contains("403"));
     }
 
     @Test
     void nonSuccessAppendThrows() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1/values/A1:F1", "{}");
-        http.stub("/sheet-1/values/A1:F:append?valueInputOption=RAW", 500, "{\"error\":{\"message\":\"boom\"}}");
+        http.stub("/sheet-1?fields=sheets.properties.title",
+                "{\"sheets\":[{\"properties\":{\"title\":\"2026-08\"}}]}");
+        http.stub("/sheet-1/values/'2026-08'!A1:F1", "{}");
+        http.stub("/sheet-1/values/'2026-08'!A1:F:append?valueInputOption=RAW", 500, "{\"error\":{\"message\":\"boom\"}}");
         GoogleSheetsClient client = client(http);
 
         Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
-                () -> client.appendRows(List.of(new SheetRow("2026-08-01", "Nomina", new BigDecimal("1"), "EUR", "t1", "Ahorro"))));
+                () -> client.appendRows(YearMonth.of(2026, 8), List.of(
+                        new SheetRow("2026-08-01", "Nomina", new BigDecimal("1"), "EUR", "t1", "Ahorro"))));
         assertTrue(error.getMessage().contains("append failed"));
         assertTrue(error.getMessage().contains("500"));
     }
