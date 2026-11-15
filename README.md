@@ -129,7 +129,7 @@ GOOGLE_SPREADSHEET_ID=<spreadsheet id>
 .\scripts\run.ps1 sync
 ```
 
-The first `sync` appends the new rows (writing the header row if the sheet is empty); the second reports `appended 0 new row(s)` and skips the duplicates. See [Google Sheets layout](#google-sheets-layout).
+The first `sync` appends the new rows into one tab per month (`YYYY-MM`, derived from each transaction's date; the tab and its header row are created on demand); the second reports `appended 0 new row(s)` and skips the duplicates. See [Google Sheets layout](#google-sheets-layout).
 
 ### 9. Scheduled sync (optional)
 
@@ -250,9 +250,11 @@ Caveats:
 
 ## Google Sheets layout
 
-`sync` targets the first sheet with columns `Fecha`, `Descripción`, `Importe`, `Moneda`, `TransactionId`, `Cuenta`. Rows are appended with `valueInputOption=RAW`, so amounts (e.g. `1200.50`) stay numeric cells instead of text or formulas. The header row is written once when missing. TransactionId is the dedupe key: running `sync` twice appends no duplicates.
+`sync` writes one tab per month, named `YYYY-MM` from each transaction's date (e.g. `2026-11`), and creates the tab and its header row on demand. Every tab has the same six columns: `Fecha`, `Descripción`, `Importe`, `Moneda`, `TransactionId`, `Cuenta`. Rows are appended with `valueInputOption=RAW`, so amounts (e.g. `1200.50`) stay numeric cells instead of text or formulas. TransactionId is the dedupe key per month tab: running `sync` twice appends no duplicates.
 
-`Cuenta` holds the source account label: the provider account display name when non-blank, otherwise the provider account id. `BANK2SHEETS_ACCOUNTS` may list multiple accounts; all rows go to the same first sheet tab, and dedupe stays global on `TransactionId`. A spreadsheet that still has the old five-column header gets `F1 = "Cuenta"` backfilled on the next sync that appends rows; historical rows keep the column blank.
+`Cuenta` holds the source account label: the provider account display name when non-blank, otherwise the provider account id. `BANK2SHEETS_ACCOUNTS` may list multiple accounts; all rows go to the same spreadsheet, into the month tab derived from each transaction's date, and dedupe stays per month tab on `TransactionId`.
+
+A spreadsheet that still has the legacy flat first tab (the pre-month-tabs sheet) is left untouched: it is not renamed, migrated, or deleted. Its rows are not dedupe keys for the month tabs, so the first upgraded `sync` may re-append whatever history the provider still returns into the month tabs. If you do not want that, delete or archive the legacy tab manually before the first upgraded `sync`.
 
 One bank account per spreadsheet is a deployment pattern, not a configuration option: run one instance (or fork) per account with its own `BANK2SHEETS_ACCOUNTS`, `GOOGLE_SPREADSHEET_ID`, and its own scheduled workflow and secrets. There is no account-to-spreadsheet mapping variable.
 
