@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.YearMonth;
 import java.util.Base64;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -32,13 +33,15 @@ import java.util.Set;
  * with an in-memory fake, so no real Google API call happens outside manual owner
  * validation.
  *
- * <p>Target layout: one tab per {@code YYYY-MM} (e.g. {@code 2026-11}), columns
- * A..F: {@code Fecha, Descripción, Importe, Moneda, TransactionId, Cuenta}.
- * Rows are appended with {@code valueInputOption=RAW}, so amounts sent as JSON
- * numbers become numeric cells and descriptive text stays literal (no
- * date/formula parsing). The header row is written once per tab when missing; on
- * a legacy five-column tab only the missing {@code F1 = "Cuenta"} cell is
- * backfilled. TransactionId is the dedupe key.
+ * <p>Target layout: one tab per month titled with the Spanish month name and
+ * year (e.g. {@code Noviembre 2026}), columns A..F:
+ * {@code Fecha, Descripción, Importe, Moneda, TransactionId, Cuenta}. Rows are
+ * appended with {@code valueInputOption=RAW}, so amounts sent as JSON numbers
+ * become numeric cells and descriptive text stays literal (no date/formula
+ * parsing); each append batch is sorted by {@code Fecha} ascending (stable, so
+ * same-date rows keep provider order). The header row is written once per tab
+ * when missing; on a legacy five-column tab only the missing {@code F1 =
+ * "Cuenta"} cell is backfilled. TransactionId is the dedupe key.
  */
 public final class GoogleSheetsClient {
 
@@ -53,6 +56,10 @@ public final class GoogleSheetsClient {
     private static final List<Object> HEADER_VALUES =
             List.<Object>of("Fecha", "Descripción", "Importe", "Moneda", "TransactionId", "Cuenta");
     private static final Gson GSON = new Gson();
+    /** Spanish month names for tab titles; index 0 = January. Locale-independent by design. */
+    private static final List<String> SPANISH_MONTHS = List.of(
+            "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre");
 
     private final SheetsConfig config;
     private final HttpExchange http;
@@ -79,7 +86,7 @@ public final class GoogleSheetsClient {
 
     /** Returns the transaction ids already present in the month tab's TransactionId column (header excluded). */
     public Set<String> existingTransactionIds(YearMonth month) {
-        String sheet = month.toString();
+        String sheet = tabTitle(month);
         ensureSheet(sheet);
         JsonObject result = readValues(quoted(sheet) + IDS_RANGE_SUFFIX, accessToken());
         Set<String> ids = new HashSet<>();
@@ -97,18 +104,20 @@ public final class GoogleSheetsClient {
     }
 
     /**
-     * Appends the given rows to the month tab in one batch after the header.
-     * When the tab has no header yet, the header row is written first so a fresh
-     * tab gets the expected columns. On a legacy five-column tab (A1 already
-     * "Fecha" but F1 missing or blank), exactly one update writes
-     * {@code F1 = "Cuenta"} before the data append; a non-blank F1 is never
-     * overwritten. Empty input does nothing (no HTTP calls).
+     * Appends the given rows to the month tab in one batch after the header,
+     * sorted by {@code Fecha} ascending (stable sort: same-date rows keep input
+     * order; the caller's list is not mutated). When the tab has no header yet,
+     * the header row is written first so a fresh tab gets the expected columns.
+     * On a legacy five-column tab (A1 already "Fecha" but F1 missing or blank),
+     * exactly one update writes {@code F1 = "Cuenta"} before the data append; a
+     * non-blank F1 is never overwritten. Empty input does nothing (no HTTP
+     * calls).
      */
     public void appendRows(YearMonth month, List<SheetRow> rows) {
         if (rows.isEmpty()) {
             return;
         }
-        String sheet = month.toString();
+        String sheet = tabTitle(month);
         ensureSheet(sheet);
         String sheetPrefix = quoted(sheet);
         String token = accessToken();
@@ -121,7 +130,10 @@ public final class GoogleSheetsClient {
                     toValuesJson(List.of(List.of(HEADER_VALUES.get(lastHeaderIndex)))));
         }
         appendValues(token, sheetPrefix + RANGE_SUFFIX,
-                toValuesJson(rows.stream().map(SheetRow::values).toList()));
+                toValuesJson(rows.stream()
+                        .sorted(Comparator.comparing(SheetRow::fecha))
+                        .map(SheetRow::values)
+                        .toList()));
     }
 
     /**
@@ -293,8 +305,13 @@ public final class GoogleSheetsClient {
         return valuesUrl(range) + ":append?valueInputOption=" + VALUE_INPUT_OPTION;
     }
 
-    /** Quotes a tab title for use in an A1 range: {@code '2026-11'!A1:F}. */
+    /** Quotes a tab title for use in an A1 range: {@code 'Agosto%202026'!A1:F}. */
     private static String quoted(String sheet) {
-        return "'" + sheet + "'";
+        return "'" + sheet.replace(" ", "%20") + "'";
+    }
+
+    /** Tab title for a month: Spanish month name, space, four-digit year (e.g. {@code Agosto 2026}). */
+    private static String tabTitle(YearMonth month) {
+        return SPANISH_MONTHS.get(month.getMonthValue() - 1) + " " + month.getYear();
     }
 }

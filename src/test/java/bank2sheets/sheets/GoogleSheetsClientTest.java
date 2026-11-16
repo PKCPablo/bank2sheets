@@ -38,10 +38,10 @@ class GoogleSheetsClientTest {
     void existingTransactionIdsForExistingMonthReadsQuotedRange() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
         http.stub("/sheet-1?fields=sheets.properties.title",
-                "{\"sheets\":[{\"properties\":{\"title\":\"2026-08\"}}]}");
-        http.stub("/sheet-1/values/'2026-08'!E2:E",
+                "{\"sheets\":[{\"properties\":{\"title\":\"Agosto 2026\"}}]}");
+        http.stub("/sheet-1/values/'Agosto%202026'!E2:E",
                 """
-                {"range":"'2026-08'!E2:E","majorDimension":"ROWS","values":[["t1"],["t2"],[""]]}
+                {"range":"'Agosto%202026'!E2:E","majorDimension":"ROWS","values":[["t1"],["t2"],[""]]}
                 """);
         GoogleSheetsClient client = client(http);
 
@@ -58,8 +58,8 @@ class GoogleSheetsClientTest {
         http.stub("/sheet-1?fields=sheets.properties.title",
                 "{\"sheets\":[{\"properties\":{\"title\":\"Hoja 1\"}}]}");
         http.stub("/sheet-1:batchUpdate", "{\"spreadsheetId\":\"sheet-1\"}");
-        http.stub("/sheet-1/values/'2026-11'!E2:E", "{}");
-        http.stub("/sheet-1/values/'2026-12'!E2:E", "{}");
+        http.stub("/sheet-1/values/'Noviembre%202026'!E2:E", "{}");
+        http.stub("/sheet-1/values/'Diciembre%202026'!E2:E", "{}");
         GoogleSheetsClient client = client(http);
 
         assertTrue(client.existingTransactionIds(YearMonth.of(2026, 11)).isEmpty());
@@ -70,12 +70,13 @@ class GoogleSheetsClientTest {
         assertEquals("POST", addSheet.method());
         assertEquals("https://sheets.googleapis.com/v4/spreadsheets/sheet-1:batchUpdate", addSheet.url());
         JsonObject body = JsonParser.parseString(addSheet.body()).getAsJsonObject();
-        assertEquals("2026-11",
+        assertEquals("Noviembre 2026",
                 body.getAsJsonArray("requests").get(0).getAsJsonObject()
                         .getAsJsonObject("addSheet").getAsJsonObject("properties").get("title").getAsString());
         assertEquals(1, body.getAsJsonArray("requests").size());
         FakeHttp.Request read = http.requests.get(3);
-        assertEquals("https://sheets.googleapis.com/v4/spreadsheets/sheet-1/values/'2026-11'!E2:E", read.url());
+        assertEquals("https://sheets.googleapis.com/v4/spreadsheets/sheet-1/values/'Noviembre%202026'!E2:E",
+                read.url());
 
         // Second month: metadata GET stays at one, a second addSheet names the second month.
         assertTrue(client.existingTransactionIds(YearMonth.of(2026, 12)).isEmpty());
@@ -84,7 +85,7 @@ class GoogleSheetsClientTest {
         FakeHttp.Request secondAddSheet = http.requests.get(4);
         assertEquals("POST", secondAddSheet.method());
         JsonObject secondBody = JsonParser.parseString(secondAddSheet.body()).getAsJsonObject();
-        assertEquals("2026-12",
+        assertEquals("Diciembre 2026",
                 secondBody.getAsJsonArray("requests").get(0).getAsJsonObject()
                         .getAsJsonObject("addSheet").getAsJsonObject("properties").get("title").getAsString());
     }
@@ -93,8 +94,8 @@ class GoogleSheetsClientTest {
     void existingTransactionIdsIsEmptyWhenSheetHasNoData() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
         http.stub("/sheet-1?fields=sheets.properties.title",
-                "{\"sheets\":[{\"properties\":{\"title\":\"2026-08\"}}]}");
-        http.stub("/sheet-1/values/'2026-08'!E2:E", "{}");
+                "{\"sheets\":[{\"properties\":{\"title\":\"Agosto 2026\"}}]}");
+        http.stub("/sheet-1/values/'Agosto%202026'!E2:E", "{}");
         GoogleSheetsClient client = client(http);
 
         assertTrue(client.existingTransactionIds(YearMonth.of(2026, 8)).isEmpty());
@@ -104,8 +105,8 @@ class GoogleSheetsClientTest {
     void tokenRequestUsesJwtBearerGrantAndCachesToken() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
         http.stub("/sheet-1?fields=sheets.properties.title",
-                "{\"sheets\":[{\"properties\":{\"title\":\"2026-08\"}}]}");
-        http.stub("/sheet-1/values/'2026-08'!E2:E", "{}");
+                "{\"sheets\":[{\"properties\":{\"title\":\"Agosto 2026\"}}]}");
+        http.stub("/sheet-1/values/'Agosto%202026'!E2:E", "{}");
         GoogleSheetsClient client = client(http);
 
         client.existingTransactionIds(YearMonth.of(2026, 8));
@@ -129,9 +130,9 @@ class GoogleSheetsClientTest {
     void appendRowsWritesHeaderThenDataWithAmountsAsNumbers() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
         http.stub("/sheet-1?fields=sheets.properties.title",
-                "{\"sheets\":[{\"properties\":{\"title\":\"2026-08\"}}]}");
-        http.stub("/sheet-1/values/'2026-08'!A1:F1", "{}");
-        http.stub("/sheet-1/values/'2026-08'!A1:F:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
+                "{\"sheets\":[{\"properties\":{\"title\":\"Agosto 2026\"}}]}");
+        http.stub("/sheet-1/values/'Agosto%202026'!A1:F1", "{}");
+        http.stub("/sheet-1/values/'Agosto%202026'!A1:F:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
         GoogleSheetsClient client = client(http);
 
         client.appendRows(YearMonth.of(2026, 8), List.of(
@@ -162,13 +163,36 @@ class GoogleSheetsClientTest {
     }
 
     @Test
+    void appendRowsSortsRowsByDateAscending() {
+        FakeHttp http = SheetsTestSupport.fakeHttp();
+        http.stub("/sheet-1?fields=sheets.properties.title",
+                "{\"sheets\":[{\"properties\":{\"title\":\"Agosto 2026\"}}]}");
+        http.stub("/sheet-1/values/'Agosto%202026'!A1:F1",
+                "{\"values\":[[\"Fecha\",\"Descripción\",\"Importe\",\"Moneda\",\"TransactionId\",\"Cuenta\"]]}");
+        http.stub("/sheet-1/values/'Agosto%202026'!A1:F:append?valueInputOption=RAW",
+                "{\"spreadsheetId\":\"sheet-1\"}");
+        GoogleSheetsClient client = client(http);
+
+        client.appendRows(YearMonth.of(2026, 8), List.of(
+                new SheetRow("2026-08-15", "Tarde", new BigDecimal("10"), "EUR", "t-late", "Cuenta Principal"),
+                new SheetRow("2026-08-02", "Temprano", new BigDecimal("20"), "EUR", "t-early", "Cuenta Principal")));
+
+        FakeHttp.Request dataAppend = http.requests.stream()
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith(":append?valueInputOption=RAW"))
+                .findFirst().orElseThrow();
+        JsonArray values = JsonParser.parseString(dataAppend.body()).getAsJsonObject().getAsJsonArray("values");
+        assertEquals("2026-08-02", values.get(0).getAsJsonArray().get(0).getAsString());
+        assertEquals("2026-08-15", values.get(1).getAsJsonArray().get(0).getAsString());
+    }
+
+    @Test
     void appendRowsSkipsHeaderWhenAlreadyPresent() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
         http.stub("/sheet-1?fields=sheets.properties.title",
-                "{\"sheets\":[{\"properties\":{\"title\":\"2026-08\"}}]}");
-        http.stub("/sheet-1/values/'2026-08'!A1:F1",
+                "{\"sheets\":[{\"properties\":{\"title\":\"Agosto 2026\"}}]}");
+        http.stub("/sheet-1/values/'Agosto%202026'!A1:F1",
                 "{\"values\":[[\"Fecha\",\"Descripción\",\"Importe\",\"Moneda\",\"TransactionId\",\"Cuenta\"]]}");
-        http.stub("/sheet-1/values/'2026-08'!A1:F:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
+        http.stub("/sheet-1/values/'Agosto%202026'!A1:F:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
         GoogleSheetsClient client = client(http);
 
         client.appendRows(YearMonth.of(2026, 8), List.of(
@@ -184,11 +208,11 @@ class GoogleSheetsClientTest {
     void appendRowsBackfillsCuentaHeaderOnLegacyFiveColumnSheet() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
         http.stub("/sheet-1?fields=sheets.properties.title",
-                "{\"sheets\":[{\"properties\":{\"title\":\"2026-08\"}}]}");
-        http.stub("/sheet-1/values/'2026-08'!A1:F1",
+                "{\"sheets\":[{\"properties\":{\"title\":\"Agosto 2026\"}}]}");
+        http.stub("/sheet-1/values/'Agosto%202026'!A1:F1",
                 "{\"values\":[[\"Fecha\",\"Descripción\",\"Importe\",\"Moneda\",\"TransactionId\"]]}");
-        http.stub("/sheet-1/values/'2026-08'!F1?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
-        http.stub("/sheet-1/values/'2026-08'!A1:F:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
+        http.stub("/sheet-1/values/'Agosto%202026'!F1?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
+        http.stub("/sheet-1/values/'Agosto%202026'!A1:F:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
         GoogleSheetsClient client = client(http);
 
         client.appendRows(YearMonth.of(2026, 8), List.of(
@@ -198,7 +222,7 @@ class GoogleSheetsClientTest {
         assertEquals(5, http.requests.size());
         FakeHttp.Request backfill = http.requests.get(3);
         assertEquals("PUT", backfill.method());
-        assertEquals("https://sheets.googleapis.com/v4/spreadsheets/sheet-1/values/'2026-08'!F1?valueInputOption=RAW",
+        assertEquals("https://sheets.googleapis.com/v4/spreadsheets/sheet-1/values/'Agosto%202026'!F1?valueInputOption=RAW",
                 backfill.url());
         assertEquals("{\"values\":[[\"Cuenta\"]]}", backfill.body());
         FakeHttp.Request dataAppend = http.requests.get(4);
@@ -211,10 +235,10 @@ class GoogleSheetsClientTest {
     void appendRowsSkipsBackfillWhenCuentaHeaderIsPresent() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
         http.stub("/sheet-1?fields=sheets.properties.title",
-                "{\"sheets\":[{\"properties\":{\"title\":\"2026-08\"}}]}");
-        http.stub("/sheet-1/values/'2026-08'!A1:F1",
+                "{\"sheets\":[{\"properties\":{\"title\":\"Agosto 2026\"}}]}");
+        http.stub("/sheet-1/values/'Agosto%202026'!A1:F1",
                 "{\"values\":[[\"Fecha\",\"Descripción\",\"Importe\",\"Moneda\",\"TransactionId\",\"Otra cosa\"]]}");
-        http.stub("/sheet-1/values/'2026-08'!A1:F:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
+        http.stub("/sheet-1/values/'Agosto%202026'!A1:F:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
         GoogleSheetsClient client = client(http);
 
         client.appendRows(YearMonth.of(2026, 8), List.of(
@@ -301,8 +325,8 @@ class GoogleSheetsClientTest {
     void nonSuccessReadThrows() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
         http.stub("/sheet-1?fields=sheets.properties.title",
-                "{\"sheets\":[{\"properties\":{\"title\":\"2026-08\"}}]}");
-        http.stub("/sheet-1/values/'2026-08'!E2:E", 403, "{\"error\":{\"message\":\"permission denied\"}}");
+                "{\"sheets\":[{\"properties\":{\"title\":\"Agosto 2026\"}}]}");
+        http.stub("/sheet-1/values/'Agosto%202026'!E2:E", 403, "{\"error\":{\"message\":\"permission denied\"}}");
         GoogleSheetsClient client = client(http);
 
         Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
@@ -314,9 +338,9 @@ class GoogleSheetsClientTest {
     void nonSuccessAppendThrows() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
         http.stub("/sheet-1?fields=sheets.properties.title",
-                "{\"sheets\":[{\"properties\":{\"title\":\"2026-08\"}}]}");
-        http.stub("/sheet-1/values/'2026-08'!A1:F1", "{}");
-        http.stub("/sheet-1/values/'2026-08'!A1:F:append?valueInputOption=RAW", 500, "{\"error\":{\"message\":\"boom\"}}");
+                "{\"sheets\":[{\"properties\":{\"title\":\"Agosto 2026\"}}]}");
+        http.stub("/sheet-1/values/'Agosto%202026'!A1:F1", "{}");
+        http.stub("/sheet-1/values/'Agosto%202026'!A1:F:append?valueInputOption=RAW", 500, "{\"error\":{\"message\":\"boom\"}}");
         GoogleSheetsClient client = client(http);
 
         Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
