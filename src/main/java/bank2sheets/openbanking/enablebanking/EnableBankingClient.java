@@ -132,8 +132,7 @@ public final class EnableBankingClient implements TransactionSource {
             return false;
         }
         if (!response.ok()) {
-            throw new Bank2SheetsException("Enable Banking request failed (HTTP " + response.status()
-                    + "): GET /sessions/" + sessionId + " -> " + response.body());
+            throw failure("GET", "/sessions/" + sessionId, response);
         }
         return "AUTHORIZED".equals(JsonSupport.stringOrEmpty(JsonSupport.parseObject(response.body()), "status"));
     }
@@ -334,10 +333,29 @@ public final class EnableBankingClient implements TransactionSource {
     private JsonObject request(String method, String pathAndQuery, String body) {
         Response response = exchange(method, pathAndQuery, body);
         if (!response.ok()) {
-            throw new Bank2SheetsException("Enable Banking request failed (HTTP " + response.status()
-                    + "): " + method + " " + pathAndQuery + " -> " + response.body());
+            throw failure(method, pathAndQuery, response);
         }
         return JsonSupport.parseObject(response.body());
+    }
+
+    /**
+     * Builds the non-2xx failure message. A {@code 429} whose body carries
+     * {@code ASPSP_RATE_LIMIT_EXCEEDED} (the BBVA {@code [HUB046]} case) means
+     * the bank's background AIS allowance for this consent is spent, so the
+     * message appends concrete recovery guidance; the raw body is always kept
+     * for diagnostics.
+     */
+    private static Bank2SheetsException failure(String method, String path, Response response) {
+        String message = "Enable Banking request failed (HTTP " + response.status()
+                + "): " + method + " " + path + " -> " + response.body();
+        if (response.status() == 429
+                && response.body().toUpperCase(java.util.Locale.ROOT).contains("ASPSP_RATE_LIMIT_EXCEEDED")) {
+            message += " The bank's background AIS access allowance for this consent is used up"
+                    + " (ASPSP_RATE_LIMIT_EXCEEDED; commonly ~4 accesses per 24 h)."
+                    + " Retrying now will not help: wait ~6 hours or until the next day,"
+                    + " or run `connect` for a fresh consent.";
+        }
+        return new Bank2SheetsException(message);
     }
 
     /**

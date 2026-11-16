@@ -372,6 +372,25 @@ class EnableBankingClientTest {
         assertTrue(error.getMessage().contains("GET"));
         assertTrue(error.getMessage().contains("/sessions/sess-1"));
         assertTrue(error.getMessage().contains("bad token"));
+        assertFalse(error.getMessage().contains("allowance"));
+    }
+
+    @Test
+    void rateLimitFailureExplainsSpentBackgroundAllowance() {
+        FakeHttp http = new FakeHttp(BASE);
+        http.responses.put("/accounts/uuid-1/transactions?transaction_status=BOOK", new Response(429,
+                "{\"code\":429,\"message\":\"[HUB046] Allowed number of accesses exceeded for consent.\","
+                        + "\"detail\":{\"message\":\"[HUB046] Allowed number of accesses exceeded for consent.\","
+                        + "\"error_name\":\"RateLimitException\",\"error_data\":{}},"
+                        + "\"error\":\"ASPSP_RATE_LIMIT_EXCEEDED\"}"));
+        EnableBankingClient client = client(http, () -> "");
+
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
+                () -> client.fetchTransactions("uuid-1"));
+        assertTrue(error.getMessage().contains("429"));
+        assertTrue(error.getMessage().contains("ASPSP_RATE_LIMIT_EXCEEDED"));
+        assertTrue(error.getMessage().contains("background AIS access allowance"));
+        assertTrue(error.getMessage().contains("next day"));
     }
 
     /** Mirrors the client's short hash: first 16 hex chars of the canonical-fields sha256. */

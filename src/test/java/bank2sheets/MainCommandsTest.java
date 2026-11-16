@@ -516,6 +516,26 @@ class MainCommandsTest {
         assertTrue(result.stderr().contains("Enable Banking request failed"));
     }
 
+    @Test
+    void enableBankingSyncWithRateLimitExitsNonZeroAndExplains() throws IOException {
+        FakeHttp http = new FakeHttp(EB_BASE);
+        stubSession(http, "[\"uuid-1\"]");
+        stubAccountDetails(http, "uuid-1", "Cuenta Nominas");
+        http.responses.put("/accounts/uuid-1/transactions?transaction_status=BOOK", new Response(429,
+                "{\"code\":429,\"message\":\"[HUB046] Allowed number of accesses exceeded for consent.\","
+                        + "\"detail\":{\"message\":\"[HUB046] Allowed number of accesses exceeded for consent.\","
+                        + "\"error_name\":\"RateLimitException\",\"error_data\":{}},"
+                        + "\"error\":\"ASPSP_RATE_LIMIT_EXCEEDED\"}"));
+        Path stateFile = sessionState();
+
+        Result result = runEnableBanking(http, stateFile, enableBankingConfig(""), "sync");
+
+        assertEquals(1, result.exitCode());
+        assertTrue(result.stderr().contains("sync:"));
+        assertTrue(result.stderr().contains("ASPSP_RATE_LIMIT_EXCEEDED"));
+        assertTrue(result.stderr().contains("background AIS access allowance"));
+    }
+
     /** Enable Banking config with valid credentials and the given session id (blank = unset). */
     private static AppConfig enableBankingConfig(String sessionId) {
         return new AppConfig("app-1", TestKeys.base64Pem(),
