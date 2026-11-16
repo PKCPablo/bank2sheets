@@ -301,10 +301,10 @@ class MainCommandsTest {
                 .toList();
         assertEquals(2, appends.size());
         for (FakeHttp.Request append : appends) {
-            String month = append.url().contains("'Julio%202026'!") ? "07/2026" : "08/2026";
+            String expectedFecha = append.url().contains("'Julio%202026'!") ? "31/07/2026" : "01/08/2026";
             JsonArray rows = JsonParser.parseString(append.body()).getAsJsonObject().getAsJsonArray("values");
             assertEquals(1, rows.size());
-            assertTrue(rows.get(0).getAsJsonArray().get(0).getAsString().endsWith("/" + month));
+            assertEquals(expectedFecha, rows.get(0).getAsJsonArray().get(0).getAsString());
         }
 
         // Mark both months' ids as present in the ledger and re-stub metadata with the created tabs.
