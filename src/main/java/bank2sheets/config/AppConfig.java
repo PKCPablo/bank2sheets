@@ -10,7 +10,7 @@ import java.util.Map;
  * connection state are read at runtime and never stored in the repository; the
  * variable names are documented in the README configuration table.
  *
- * <p>{@code BANK2SHEETS_ACCOUNTS} holds comma-separated {@code provider:accountId}
+ * <p>{@code BANK2SHEETS_ACCOUNTS} holds comma-separated {@code provider:accountId[:label]}
  * entries; all entries must use the {@code enablebanking} provider.
  *
  * <p>The optional {@code ENABLE_BANKING_ASPSP_NAME}, {@code ENABLE_BANKING_ASPSP_COUNTRY}
@@ -92,8 +92,10 @@ public record AppConfig(
     }
 
     /**
-     * Parses {@code provider:accountId} entries separated by commas. Empty
-     * entries are ignored; malformed entries and unsupported providers fail fast.
+     * Parses {@code provider:accountId[:label]} entries separated by commas.
+     * The optional label is trimmed and may contain spaces or colons (commas
+     * still separate entries). Empty entries are ignored; malformed entries and
+     * unsupported providers fail fast.
      */
     static List<AccountConfig> parseAccounts(String raw) {
         List<AccountConfig> accounts = new ArrayList<>();
@@ -102,17 +104,18 @@ public record AppConfig(
             if (trimmed.isEmpty()) {
                 continue;
             }
-            int colon = trimmed.indexOf(':');
-            if (colon <= 0 || colon == trimmed.length() - 1) {
+            String[] parts = trimmed.split(":", 3);
+            if (parts.length < 2 || parts[0].isBlank() || parts[1].isBlank()) {
                 throw new IllegalArgumentException(
-                        "Invalid BANK2SHEETS_ACCOUNTS entry (expected provider:accountId): " + entry);
+                        "Invalid BANK2SHEETS_ACCOUNTS entry (expected provider:accountId[:label]): " + entry);
             }
-            String provider = trimmed.substring(0, colon);
-            String accountId = trimmed.substring(colon + 1);
+            String provider = parts[0];
+            String accountId = parts[1];
+            String label = parts.length == 3 ? parts[2].trim() : "";
             if (!"enablebanking".equals(provider)) {
                 throw new IllegalArgumentException("Unsupported provider: " + provider);
             }
-            accounts.add(new AccountConfig(provider, accountId));
+            accounts.add(new AccountConfig(provider, accountId, label));
         }
         return List.copyOf(accounts);
     }

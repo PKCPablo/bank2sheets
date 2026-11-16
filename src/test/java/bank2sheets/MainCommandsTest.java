@@ -253,6 +253,31 @@ class MainCommandsTest {
     }
 
     @Test
+    void enableBankingSyncUsesConfiguredLabelWithoutAccountDetails() throws IOException {
+        FakeHttp http = new FakeHttp(EB_BASE);
+        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", NOMINA_TRANSACTION_JSON);
+        FakeHttp sheets = SheetsTestSupport.fakeHttp();
+        stubSpreadsheetTitles(sheets, "Agosto 2026");
+        stubMonthSheet(sheets, "Agosto 2026");
+        Path stateFile = sessionState();
+        AppConfig cfg = new AppConfig("app-1", TestKeys.base64Pem(),
+                "http://127.0.0.1:8765/bank2sheets/callback", "sess-eb-1",
+                List.of(new AccountConfig("enablebanking", "uuid-1", "Cuenta Nóminas")));
+        Main main = mainFor(cfg, http, sheets, stateFile);
+
+        Result result = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
+
+        assertEquals(0, result.exitCode());
+        String appendBody = sheets.requests.stream()
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=RAW"))
+                .findFirst().orElseThrow().body();
+        assertEquals("Cuenta Nóminas", JsonParser.parseString(appendBody).getAsJsonObject()
+                .getAsJsonArray("values").get(0).getAsJsonArray().get(3).getAsString());
+        assertTrue(http.requests.stream()
+                .noneMatch(r -> r.url().endsWith("/details") || r.url().endsWith("/sessions")));
+    }
+
+    @Test
     void enableBankingSyncCreatesOneTabPerMonthAndRoutesRows() throws IOException {
         FakeHttp http = new FakeHttp(EB_BASE);
         stubSession(http, "[\"uuid-1\"]");

@@ -100,7 +100,7 @@ Available accounts:
 Set BANK2SHEETS_ACCOUNTS=enablebanking:<accountId> for `fetch`/`sync`.
 ```
 
-Copy one account id into `.env` as `BANK2SHEETS_ACCOUNTS=enablebanking:<uuid>`. `connect` works with `BANK2SHEETS_ACCOUNTS` unset, and the session id is persisted locally in `bank2sheets-state.properties` for later `fetch`/`sync` runs.
+Set one account id into `.env` as `BANK2SHEETS_ACCOUNTS=enablebanking:<uuid>`, optionally with a label: `BANK2SHEETS_ACCOUNTS=enablebanking:<uuid>:<label>` (e.g. `...:Cuenta Nóminas`). `connect` works with `BANK2SHEETS_ACCOUNTS` unset, and the session id is persisted locally in `bank2sheets-state.properties` for later `fetch`/`sync` runs.
 
 ### 7. Create the Google Sheets side
 
@@ -204,7 +204,7 @@ Real credentials are provided at runtime via environment variables and are never
 | `ENABLE_BANKING_ASPSP_NAME` | Optional ASPSP selection; default `BBVA`. Must match the ASPSP name shown in Enable Banking (trimmed) |
 | `ENABLE_BANKING_ASPSP_COUNTRY` | Optional ASPSP country; default `ES` (ISO 3166 alpha-2, uppercased) |
 | `ENABLE_BANKING_PSU_TYPE` | Optional PSU type; default `personal` (lowercased) |
-| `BANK2SHEETS_ACCOUNTS` | Comma-separated `provider:accountId` entries; `enablebanking:<uuid>`; all entries must use one provider per run; multiple accounts are allowed and each appended row is labeled in the `Cuenta` column |
+| `BANK2SHEETS_ACCOUNTS` | Comma-separated `provider:accountId[:label]` entries; `enablebanking:<uuid>` with an optional trimmed label (may contain spaces or colons, not commas); all entries must use one provider per run; multiple accounts are allowed and each appended row is labeled in the `Cuenta` column. When every entry has a label, `sync`/`fetch` skip the `listAccounts()` session/details accesses |
 | `GOOGLE_SERVICE_ACCOUNT_B64` | Base64-encoded Google service account JSON (`client_email` + `private_key`) with edit access to the target spreadsheet; required for `sync` |
 | `GOOGLE_SPREADSHEET_ID` | Id of the target spreadsheet (shared with the service account email); required for `sync` |
 
@@ -256,7 +256,7 @@ Caveats:
 
 One spreadsheet per year is a manual switch, not a configuration option: before the first sync that returns new-year transactions (with the monthly cron, before the February 1 run), update `GOOGLE_SPREADSHEET_ID` in `.env` and in the Actions secret. If you switch late, the new-year tabs are created in the old spreadsheet.
 
-`Cuenta` holds the source account label: the provider account display name when non-blank, otherwise the provider account id. `BANK2SHEETS_ACCOUNTS` may list multiple accounts; all rows go to the same spreadsheet, into the month tab derived from each transaction's date, and dedupe stays exact on `TransactionId` via the hidden `_sync` ledger.
+`Cuenta` holds the source account label: the configured label when the entry has one, else the provider account display name when non-blank, otherwise the provider account id. `BANK2SHEETS_ACCOUNTS` may list multiple accounts; all rows go to the same spreadsheet, into the month tab derived from each transaction's date, and dedupe stays exact on `TransactionId` via the hidden `_sync` ledger.
 
 A spreadsheet that still has the legacy flat first tab (the pre-month-tabs sheet) is left untouched: it is not renamed, migrated, or deleted. Its rows are not dedupe keys for the month tabs, so the first upgraded `sync` may re-append whatever history the provider still returns into the month tabs. If you do not want that, delete or archive the legacy tab manually before the first upgraded `sync`.
 

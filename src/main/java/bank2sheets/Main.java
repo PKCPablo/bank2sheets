@@ -163,10 +163,17 @@ public final class Main {
         }
         try {
             TransactionSource source = sources.apply(resolved);
-            Map<String, String> accountNames = accountNames(source);
+            boolean needsNames = resolved.accounts().stream().anyMatch(a -> a.label().isBlank());
+            Map<String, String> accountNames = needsNames ? accountNames(source) : Map.of();
             for (AccountConfig account : resolved.accounts()) {
                 List<Transaction> transactions = source.fetchTransactions(account.providerAccountId());
-                String name = accountNames.getOrDefault(account.providerAccountId(), "");
+                String name = account.label();
+                if (name.isBlank()) {
+                    name = accountNames.getOrDefault(account.providerAccountId(), "");
+                }
+                if (name.isBlank()) {
+                    name = account.providerAccountId();
+                }
                 System.out.println("Account " + account.providerAccountId()
                         + (name.isBlank() ? "" : " (" + name + ")") + ": " + transactions.size() + " transaction(s)");
                 for (Transaction transaction : transactions) {
@@ -214,8 +221,10 @@ public final class Main {
      * Fetches transactions for every configured account and appends the ones not
      * already present in their month tab. Each row is routed to the tab titled
      * with the Spanish month name and year (e.g. {@code Enero 2026}, from
-     * {@code madeOn()}) and labeled with the source account (provider display
-     * name, falling back to the account id); tabs are created on demand. Each
+     * {@code madeOn()}) and labeled with the source account (configured label,
+     * else provider display name, falling back to the account id); tabs are
+     * created on demand. When every configured account has a label, the
+     * {@code listAccounts()} session/details calls are skipped entirely. Each
      * month's new rows are appended in ascending {@code Fecha} order. Dedupe is
      * exact on the transaction id against the hidden {@code _sync} ledger (per
      * month tab), plus an in-run id set, so repeated runs append nothing new
@@ -230,12 +239,16 @@ public final class Main {
         try {
             GoogleSheetsClient sheetsClient = sheets.get();
             TransactionSource source = sources.apply(resolved);
-            Map<String, String> accountLabels = accountNames(source);
+            boolean needsNames = resolved.accounts().stream().anyMatch(a -> a.label().isBlank());
+            Map<String, String> accountLabels = needsNames ? accountNames(source) : Map.of();
             Map<YearMonth, List<SheetRow>> byMonth = new TreeMap<>();
             Set<String> seen = new HashSet<>();
             int fetched = 0;
             for (AccountConfig account : resolved.accounts()) {
-                String label = accountLabels.getOrDefault(account.providerAccountId(), "");
+                String label = account.label();
+                if (label.isBlank()) {
+                    label = accountLabels.getOrDefault(account.providerAccountId(), "");
+                }
                 if (label.isBlank()) {
                     label = account.providerAccountId();
                 }
@@ -274,7 +287,11 @@ public final class Main {
         }
     }
 
-    /** Account id -> raw display name, from a single {@code listAccounts()} call. */
+    /**
+     * Account id -> raw display name, from a single {@code listAccounts()} call.
+     * Only needed when at least one configured account lacks a label; fully
+     * labelled configs skip the session/details accesses entirely.
+     */
     private static Map<String, String> accountNames(TransactionSource source) {
         Map<String, String> names = new HashMap<>();
         for (Account account : source.listAccounts()) {
