@@ -126,14 +126,13 @@ GOOGLE_SPREADSHEET_ID=<spreadsheet id>
 ```powershell
 .\scripts\run.ps1 fetch   # optional: see the transactions as JSON lines
 .\scripts\run.ps1 sync
-.\scripts\run.ps1 sync
 ```
 
-The first `sync` appends the new rows into one tab per month, titled with the Spanish month name and year from each transaction's date (e.g. `Enero 2026`, `Febrero 2026`; the tab and its header row are created on demand); the second reports `appended 0 new row(s)` and skips the duplicates. See [Google Sheets layout](#google-sheets-layout).
+The `sync` appends the new rows into one tab per month, titled with the Spanish month name and year from each transaction's date (e.g. `Enero 2026`, `Febrero 2026`; the tab and its header row are created on demand). It is idempotent: a second run reports `appended 0 new row(s)` and skips the duplicates — but it still spends one of the bank's background accesses, so there is no need to run it twice in a row. See [Google Sheets layout](#google-sheets-layout).
 
 ### 9. Scheduled sync (optional)
 
-To sync automatically every month via GitHub Actions, see [Scheduled sync (GitHub Actions)](#scheduled-sync-github-actions). Fork-specific facts: enable Actions/workflows in your fork first (GitHub disables scheduled workflows in new forks by default), add the seven Actions secrets, and copy `enablebanking.session_id` from `bank2sheets-state.properties` into the `ENABLE_BANKING_SESSION_ID` secret. Run `workflow_dispatch` once against a disposable sheet, then let the monthly cron (`0 6 1 * *`) take over. Note that sessions expire (commonly up to ~180 days) and GitHub disables schedules after 60 days of no repository activity.
+To sync automatically every month via GitHub Actions, see [Scheduled sync (GitHub Actions)](#scheduled-sync-github-actions). Fork-specific facts: enable Actions/workflows in your fork first (GitHub disables scheduled workflows in new forks by default), add the seven Actions secrets, and copy `enablebanking.session_id` from `bank2sheets-state.properties` into the `ENABLE_BANKING_SESSION_ID` secret. Run `workflow_dispatch` once against a disposable sheet, then let the monthly crons (`0 6 1 * *` with the `0 6 2 * *` next-day retry) take over. Note that sessions expire (commonly up to ~180 days) and GitHub disables schedules after 60 days of no repository activity.
 
 ### 10. Troubleshooting
 
@@ -150,6 +149,7 @@ To sync automatically every month via GitHub Actions, see [Scheduled sync (GitHu
 | `no accounts configured; set BANK2SHEETS_ACCOUNTS ...` | Add `BANK2SHEETS_ACCOUNTS=enablebanking:<uuid>` to `.env` (step 6). |
 | `no connection; run \`connect\` once or set ENABLE_BANKING_SESSION_ID` | Run `connect` first, or set `ENABLE_BANKING_SESSION_ID`. |
 | Google `read/append failed (HTTP 403)` | Share the spreadsheet with the service account `client_email` as Editor (step 7). |
+| `Enable Banking request failed (HTTP 429)` / `ASPSP_RATE_LIMIT_EXCEEDED` / `[HUB046]` | The bank's background-fetch allowance is spent (~4 accesses per 24 h). Wait ~6 hours or until the next day and run `sync` again (the scheduled workflow retries automatically on the 2nd); or re-run `connect` to re-consent. Do not loop retries — each attempt spends the allowance. Tip: configure a label for every account (`enablebanking:<uuid>:<label>`) so `sync`/`fetch` skip the per-account `/details` accesses and spend less of the allowance. Note: with labelled configs the expired-session error surfaces at the first `/accounts/{id}/transactions` call instead of an earlier session check. |
 | Scheduled workflow does not run | Enable Actions/workflows in the fork and add the seven secrets (step 9). |
 
 ## Build
@@ -208,7 +208,7 @@ Real credentials are provided at runtime via environment variables and are never
 | `GOOGLE_SERVICE_ACCOUNT_B64` | Base64-encoded Google service account JSON (`client_email` + `private_key`) with edit access to the target spreadsheet; required for `sync` |
 | `GOOGLE_SPREADSHEET_ID` | Id of the target spreadsheet (shared with the service account email); required for `sync` |
 
-Enable Banking uses the Open Banking Gateway API (`https://api.enablebanking.com`) with an RS256 JWT built from `ENABLE_BANKING_APP_ID` and the private key. It runs in the free restricted-production mode: personal, non-commercial use only, and only the accounts you link in the Enable Banking control panel are accessible. ASPSP selection is configurable via the three optional `ENABLE_BANKING_ASPSP_*`/`ENABLE_BANKING_PSU_TYPE` variables (defaults: BBVA / ES / personal); BBVA Spain remains the validated target, and other ASPSPs are configurable but not owner-validated. ASPSP rate limits apply (bank-specific, commonly a few background fetches per day) and sessions expire after an ASPSP-dependent validity period (commonly up to ~180 days); when that happens, run `connect` again to re-authorise with a fresh SCA. During `connect`, an `http://127.0.0.1` redirect uses a local loopback listener (bound before the URL is printed, 5-minute timeout). An `https://` redirect (production) uses the static callback page in `docs/callback.html`, served at `https://pkcpablo.github.io/bank2sheets/callback.html`; the CLI prompts you to paste the full callback URL from the browser.
+Enable Banking uses the Open Banking Gateway API (`https://api.enablebanking.com`) with an RS256 JWT built from `ENABLE_BANKING_APP_ID` and the private key. It runs in the free restricted-production mode: personal, non-commercial use only, and only the accounts you link in the Enable Banking control panel are accessible. ASPSP selection is configurable via the three optional `ENABLE_BANKING_ASPSP_*`/`ENABLE_BANKING_PSU_TYPE` variables (defaults: BBVA / ES / personal); BBVA Spain remains the validated target, and other ASPSPs are configurable but not owner-validated. ASPSP rate limits apply: the bank allows roughly 4 background accesses per 24 h, and once the allowance is spent `sync`/`fetch` fail with `HTTP 429` / `ASPSP_RATE_LIMIT_EXCEEDED` / `[HUB046]` — wait ~6 hours or until the next day and retry (do not loop retries; each attempt spends the allowance), or re-run `connect` to re-consent. Sessions expire after an ASPSP-dependent validity period (commonly up to ~180 days); when that happens, run `connect` again to re-authorise with a fresh SCA. During `connect`, an `http://127.0.0.1` redirect uses a local loopback listener (bound before the URL is printed, 5-minute timeout). An `https://` redirect (production) uses the static callback page in `docs/callback.html`, served at `https://pkcpablo.github.io/bank2sheets/callback.html`; the CLI prompts you to paste the full callback URL from the browser.
 
 Example (PowerShell):
 
@@ -228,7 +228,7 @@ The runtime state file `bank2sheets-state.properties` holds only the provider id
 
 ## Scheduled sync (GitHub Actions)
 
-`.github/workflows/sync.yml` builds the fat JAR and runs `sync` monthly on the 1st at 06:00 UTC (`0 6 1 * *`) and on manual dispatch (`workflow_dispatch`). The runner is ephemeral, so the workflow never runs `connect`; it uses the session id from the `ENABLE_BANKING_SESSION_ID` secret. The workflow runs in any repository that enables Actions and configures the secrets below — including forks, but a fork must enable Actions/workflows first because GitHub disables scheduled workflows in new forks by default.
+`.github/workflows/sync.yml` builds the fat JAR and runs `sync` monthly on the 1st at 06:00 UTC (`0 6 1 * *`) and again on the 2nd at 06:00 UTC (`0 6 2 * *`) as an automatic next-day retry: if the 1st run hit the bank's allowance (`HTTP 429` / `ASPSP_RATE_LIMIT_EXCEEDED`), the 2nd run succeeds once the allowance resets; when the 1st already appended everything, the 2nd appends 0 rows (`appended 0 new row(s)`) but still spends one bank access. Manual dispatch (`workflow_dispatch`) is also available. The runner is ephemeral, so the workflow never runs `connect`; it uses the session id from the `ENABLE_BANKING_SESSION_ID` secret. The workflow runs in any repository that enables Actions and configures the secrets below — including forks, but a fork must enable Actions/workflows first because GitHub disables scheduled workflows in new forks by default.
 
 Required repository secrets (Settings → Secrets and variables → Actions → New repository secret):
 
@@ -238,7 +238,7 @@ Required repository secrets (Settings → Secrets and variables → Actions → 
 | `ENABLE_BANKING_PRIVATE_KEY_B64` | Base64-encoded PKCS#8 PEM private key |
 | `ENABLE_BANKING_REDIRECT_URL` | Registered redirect URL (production HTTPS Pages URL) |
 | `ENABLE_BANKING_SESSION_ID` | Session id from local `bank2sheets-state.properties` (`enablebanking.session_id`) |
-| `BANK2SHEETS_ACCOUNTS` | e.g. `enablebanking:<uuid>` |
+| `BANK2SHEETS_ACCOUNTS` | e.g. `enablebanking:<uuid>:Cuenta Nóminas` (the label is optional; with a label on every entry, `sync` skips the per-account `/details` accesses) |
 | `GOOGLE_SERVICE_ACCOUNT_B64` | Base64-encoded Google service account JSON |
 | `GOOGLE_SPREADSHEET_ID` | Target spreadsheet id |
 

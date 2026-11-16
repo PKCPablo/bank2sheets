@@ -48,7 +48,7 @@ bank2sheets is a personal Java 21 CLI that fetches BBVA transactions through Ope
 
 - Never commit `.env`, credentials, service-account keys, or `bank2sheets-state.properties` (it holds the provider session id: `enablebanking.session_id`).
 - Do not add runtime dependencies beyond Gson without asking; no frontend, database, or formal architecture layer.
-- Scheduled sync runs via `.github/workflows/sync.yml` (monthly on the 1st, 06:00 UTC, `0 6 1 * *` + `workflow_dispatch`), using repository Actions secrets; it never runs `connect` (ephemeral runner, session id from the `ENABLE_BANKING_SESSION_ID` secret). Verified 2026-11-14 via `workflow_dispatch` (issue #4 closed).
+- Scheduled sync runs via `.github/workflows/sync.yml` (monthly on the 1st and the 2nd at 06:00 UTC, `0 6 1 * *` + `0 6 2 * *` + `workflow_dispatch`; the 2nd is an automatic next-day retry after a bank allowance `429` and appends 0 rows (still spending one bank access) when the 1st already appended everything), using repository Actions secrets; it never runs `connect` (ephemeral runner, session id from the `ENABLE_BANKING_SESSION_ID` secret). Verified 2026-11-14 via `workflow_dispatch` (issue #4 closed).
 - Keep changes within the requested scope; record durable decisions in `docs/ai/` via the planner.
 
 ## Repository boundary

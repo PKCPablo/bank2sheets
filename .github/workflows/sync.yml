@@ -4,6 +4,11 @@ on:
   schedule:
     # Monthly on the 1st at 06:00 UTC
     - cron: '0 6 1 * *'
+    # Retry the next day (2nd, 06:00 UTC): if the 1st hit the bank's ASPSP allowance
+    # (HTTP 429 / ASPSP_RATE_LIMIT_EXCEEDED), the retry succeeds; when the 1st already
+    # appended everything, this run appends 0 rows (idempotent sync) but still
+    # spends one bank access.
+    - cron: '0 6 2 * *'
   workflow_dispatch:
 
 permissions:
