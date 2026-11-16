@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.time.YearMonth;
 import java.util.Base64;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -41,7 +42,11 @@ import java.util.Set;
  * parsing); each append batch is sorted by {@code Fecha} ascending (stable, so
  * same-date rows keep provider order). The header row is written once per tab
  * when missing; on a legacy five-column tab only the missing {@code F1 =
- * "Cuenta"} cell is backfilled. TransactionId is the dedupe key.
+ * "Cuenta"} cell is backfilled. Dedupe uses a hidden {@code _sync} helper tab
+ * ({@code Tab | TransactionId}): ids are read once per client instance and a
+ * transaction id is recorded there only after its visible row was appended
+ * successfully, so a failed ledger append may duplicate rows on a later run but
+ * never loses them.
  */
 public final class GoogleSheetsClient {
 
@@ -50,8 +55,13 @@ public final class GoogleSheetsClient {
     private static final String SCOPE = "https://www.googleapis.com/auth/spreadsheets";
     private static final String RANGE_SUFFIX = "!A1:F";
     private static final String HEADER_RANGE_SUFFIX = "!A1:F1";
-    private static final String IDS_RANGE_SUFFIX = "!E2:E";
     private static final String VALUE_INPUT_OPTION = "RAW";
+    /** Hidden helper tab that records appended transaction ids for dedupe. */
+    private static final String HELPER_TITLE = "_sync";
+    /** Header row of the helper tab; data starts at row 2. */
+    private static final List<Object> HELPER_HEADER = List.<Object>of("Tab", "TransactionId");
+    private static final String HELPER_READ_RANGE_SUFFIX = "!A:B";
+    private static final String HELPER_APPEND_RANGE_SUFFIX = "!A2:B";
     /** Header row; order must match {@link SheetRow#values()} (columns A..F). */
     private static final List<Object> HEADER_VALUES =
             List.<Object>of("Fecha", "Descripción", "Importe", "Moneda", "TransactionId", "Cuenta");
@@ -67,6 +77,9 @@ public final class GoogleSheetsClient {
     /** Titles of the spreadsheet tabs, loaded lazily once per client instance. */
     private final Set<String> sheetTitles = new HashSet<>();
     private boolean sheetTitlesLoaded;
+    /** Appended transaction ids per tab title, read lazily once from the helper tab. */
+    private Map<String, Set<String>> ledger;
+    private boolean ledgerLoaded;
 
     public GoogleSheetsClient(SheetsConfig config, HttpExchange http) {
         this.config = config;
@@ -84,23 +97,15 @@ public final class GoogleSheetsClient {
         return new GoogleSheetsClient(config, new RealHttpExchange());
     }
 
-    /** Returns the transaction ids already present in the month tab's TransactionId column (header excluded). */
+    /**
+     * Returns the transaction ids already recorded for the month tab in the
+     * hidden {@code _sync} ledger, as a mutable copy the caller can extend
+     * with in-run ids.
+     */
     public Set<String> existingTransactionIds(YearMonth month) {
         String sheet = tabTitle(month);
         ensureSheet(sheet);
-        JsonObject result = readValues(quoted(sheet) + IDS_RANGE_SUFFIX, accessToken());
-        Set<String> ids = new HashSet<>();
-        JsonArray values = result.has("values") ? result.getAsJsonArray("values") : new JsonArray();
-        for (JsonElement row : values) {
-            JsonArray cells = row.getAsJsonArray();
-            if (!cells.isEmpty() && !cells.get(0).isJsonNull()) {
-                String id = cells.get(0).getAsString();
-                if (!id.isBlank()) {
-                    ids.add(id);
-                }
-            }
-        }
-        return ids;
+        return new HashSet<>(ledger().getOrDefault(sheet, Set.of()));
     }
 
     /**
@@ -111,7 +116,10 @@ public final class GoogleSheetsClient {
      * On a legacy five-column tab (A1 already "Fecha" but F1 missing or blank),
      * exactly one update writes {@code F1 = "Cuenta"} before the data append; a
      * non-blank F1 is never overwritten. Empty input does nothing (no HTTP
-     * calls).
+     * calls). After the visible append succeeds, one {@code [Tab, TransactionId]}
+     * pair per row is appended to the hidden {@code _sync} ledger and only then
+     * added to the in-memory cache; a failed ledger append throws before the
+     * cache is updated.
      */
     public void appendRows(YearMonth month, List<SheetRow> rows) {
         if (rows.isEmpty()) {
@@ -119,6 +127,7 @@ public final class GoogleSheetsClient {
         }
         String sheet = tabTitle(month);
         ensureSheet(sheet);
+        ledger();
         String sheetPrefix = quoted(sheet);
         String token = accessToken();
         JsonArray headerRow = readHeaderRow(token, sheetPrefix + HEADER_RANGE_SUFFIX);
@@ -129,11 +138,17 @@ public final class GoogleSheetsClient {
             updateValues(token, sheetPrefix + "!F1",
                     toValuesJson(List.of(List.of(HEADER_VALUES.get(lastHeaderIndex)))));
         }
+        List<SheetRow> sorted = rows.stream()
+                .sorted(Comparator.comparing(SheetRow::fecha))
+                .toList();
         appendValues(token, sheetPrefix + RANGE_SUFFIX,
-                toValuesJson(rows.stream()
-                        .sorted(Comparator.comparing(SheetRow::fecha))
-                        .map(SheetRow::values)
+                toValuesJson(sorted.stream().map(SheetRow::values).toList()));
+        appendValues(token, quoted(HELPER_TITLE) + HELPER_APPEND_RANGE_SUFFIX,
+                toValuesJson(sorted.stream()
+                        .map(row -> List.<Object>of(sheet, row.transactionId()))
                         .toList()));
+        ledger.computeIfAbsent(sheet, key -> new HashSet<>())
+                .addAll(sorted.stream().map(SheetRow::transactionId).toList());
     }
 
     /**
@@ -143,40 +158,89 @@ public final class GoogleSheetsClient {
      * caches it for the rest of the run.
      */
     private void ensureSheet(String title) {
-        if (!sheetTitlesLoaded) {
-            Response response = http.exchange("GET",
-                    API_BASE + "/" + config.spreadsheetId() + "?fields=sheets.properties.title",
-                    Map.of("Authorization", "Bearer " + accessToken()), null);
-            requireOk(response, "metadata");
-            JsonObject spreadsheet = JsonSupport.parseObject(response.body());
-            if (spreadsheet.has("sheets")) {
-                for (JsonElement sheet : spreadsheet.getAsJsonArray("sheets")) {
-                    JsonObject properties = sheet.getAsJsonObject().getAsJsonObject("properties");
-                    if (properties != null && properties.has("title")) {
-                        sheetTitles.add(properties.get("title").getAsString());
-                    }
+        ensureSheetTitles();
+        if (!sheetTitles.contains(title)) {
+            createSheet(title, false);
+        }
+    }
+
+    /** Loads the spreadsheet's tab titles once per client instance. */
+    private void ensureSheetTitles() {
+        if (sheetTitlesLoaded) {
+            return;
+        }
+        Response response = http.exchange("GET",
+                API_BASE + "/" + config.spreadsheetId() + "?fields=sheets.properties.title",
+                Map.of("Authorization", "Bearer " + accessToken()), null);
+        requireOk(response, "metadata");
+        JsonObject spreadsheet = JsonSupport.parseObject(response.body());
+        if (spreadsheet.has("sheets")) {
+            for (JsonElement sheet : spreadsheet.getAsJsonArray("sheets")) {
+                JsonObject properties = sheet.getAsJsonObject().getAsJsonObject("properties");
+                if (properties != null && properties.has("title")) {
+                    sheetTitles.add(properties.get("title").getAsString());
                 }
             }
-            sheetTitlesLoaded = true;
         }
-        if (!sheetTitles.contains(title)) {
-            JsonObject request = new JsonObject();
-            request.addProperty("title", title);
-            JsonObject addSheet = new JsonObject();
-            addSheet.add("properties", request);
-            JsonObject body = new JsonObject();
-            JsonArray requests = new JsonArray();
-            JsonObject wrapper = new JsonObject();
-            wrapper.add("addSheet", addSheet);
-            requests.add(wrapper);
-            body.add("requests", requests);
-            Response response = http.exchange("POST",
-                    API_BASE + "/" + config.spreadsheetId() + ":batchUpdate",
-                    Map.of("Authorization", "Bearer " + accessToken(), "Content-Type", "application/json"),
-                    body.toString());
-            requireOk(response, "add sheet");
-            sheetTitles.add(title);
+        sheetTitlesLoaded = true;
+    }
+
+    /** Creates a tab via one {@code addSheet} batchUpdate; {@code hidden} adds {@code "hidden": true}. */
+    private void createSheet(String title, boolean hidden) {
+        JsonObject properties = new JsonObject();
+        properties.addProperty("title", title);
+        if (hidden) {
+            properties.addProperty("hidden", true);
         }
+        JsonObject addSheet = new JsonObject();
+        addSheet.add("properties", properties);
+        JsonObject body = new JsonObject();
+        JsonArray requests = new JsonArray();
+        JsonObject wrapper = new JsonObject();
+        wrapper.add("addSheet", addSheet);
+        requests.add(wrapper);
+        body.add("requests", requests);
+        Response response = http.exchange("POST",
+                API_BASE + "/" + config.spreadsheetId() + ":batchUpdate",
+                Map.of("Authorization", "Bearer " + accessToken(), "Content-Type", "application/json"),
+                body.toString());
+        requireOk(response, "add sheet");
+        sheetTitles.add(title);
+    }
+
+    /** Ensures the hidden {@code _sync} ledger tab exists, writing its header row when created. */
+    private void ensureHelperSheet() {
+        ensureSheetTitles();
+        if (!sheetTitles.contains(HELPER_TITLE)) {
+            createSheet(HELPER_TITLE, true);
+            appendValues(accessToken(), quoted(HELPER_TITLE) + "!A1:B",
+                    toValuesJson(List.of(HELPER_HEADER)));
+        }
+    }
+
+    /**
+     * Loads the ledger ({@code tab title -> ids}) from one read of
+     * {@code '_sync'!A:B}; blank rows and the {@code Tab} header row are skipped.
+     */
+    private Map<String, Set<String>> ledger() {
+        if (!ledgerLoaded) {
+            ensureHelperSheet();
+            Map<String, Set<String>> loaded = new HashMap<>();
+            JsonObject result = readValues(quoted(HELPER_TITLE) + HELPER_READ_RANGE_SUFFIX, accessToken());
+            JsonArray values = result.has("values") ? result.getAsJsonArray("values") : new JsonArray();
+            for (JsonElement row : values) {
+                JsonArray cells = row.getAsJsonArray();
+                String tab = stringAt(cells, 0);
+                String id = stringAt(cells, 1);
+                if (tab.isBlank() || id.isBlank() || HELPER_HEADER.get(0).equals(tab)) {
+                    continue;
+                }
+                loaded.computeIfAbsent(tab, key -> new HashSet<>()).add(id);
+            }
+            ledger = loaded;
+            ledgerLoaded = true;
+        }
+        return ledger;
     }
 
     /** Serializes rows to the append body: {@code {"values": [[...]]}} with amounts as JSON numbers. */

@@ -157,15 +157,19 @@ class MainCommandsTest {
         assertEquals(0, first.exitCode());
         assertTrue(first.stdout().contains("appended 1 new row(s)"));
         String appendBody = sheets.requests.stream()
-                .filter(r -> "POST".equals(r.method()) && r.url().endsWith(":append?valueInputOption=RAW"))
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'Agosto%202026'!A1:F:append?valueInputOption=RAW"))
                 .findFirst().orElseThrow().body();
         assertEquals("Cuenta Nominas", JsonParser.parseString(appendBody).getAsJsonObject()
                 .getAsJsonArray("values").get(0).getAsJsonArray().get(5).getAsString());
 
-        // Mark the appended TransactionId as already present, then sync again.
-        String transactionId = JsonParser.parseString(appendBody).getAsJsonObject()
-                .getAsJsonArray("values").get(0).getAsJsonArray().get(4).getAsString();
-        sheets.stub("/sheet-1/values/'Agosto%202026'!E2:E", "{\"values\": [[\"" + transactionId + "\"]]}");
+        // Mark the appended TransactionId as already present in the ledger, then sync again.
+        String ledgerBody = sheets.requests.stream()
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'_sync'!A2:B:append?valueInputOption=RAW"))
+                .findFirst().orElseThrow().body();
+        String transactionId = JsonParser.parseString(ledgerBody).getAsJsonObject()
+                .getAsJsonArray("values").get(0).getAsJsonArray().get(1).getAsString();
+        sheets.stub("/sheet-1/values/'_sync'!A:B",
+                "{\"values\": [[\"Agosto 2026\",\"" + transactionId + "\"]]}");
 
         Result second = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
         assertEquals(0, second.exitCode());
@@ -201,7 +205,7 @@ class MainCommandsTest {
         assertEquals(0, first.exitCode());
         assertTrue(first.stdout().contains("appended 2 new row(s)"));
         List<String> appendBodies = sheets.requests.stream()
-                .filter(r -> "POST".equals(r.method()) && r.url().endsWith(":append?valueInputOption=RAW"))
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'Agosto%202026'!A1:F:append?valueInputOption=RAW"))
                 .map(r -> r.body()).toList();
         JsonArray values = JsonParser.parseString(appendBodies.get(0)).getAsJsonObject()
                 .getAsJsonArray("values");
@@ -209,11 +213,15 @@ class MainCommandsTest {
         assertEquals("Cuenta Nominas", values.get(0).getAsJsonArray().get(5).getAsString());
         assertEquals("Cuenta Ahorro", values.get(1).getAsJsonArray().get(5).getAsString());
 
-        // Mark both appended TransactionIds as already present, then sync again.
-        String firstId = values.get(0).getAsJsonArray().get(4).getAsString();
-        String secondId = values.get(1).getAsJsonArray().get(4).getAsString();
-        sheets.stub("/sheet-1/values/'Agosto%202026'!E2:E",
-                "{\"values\": [[\"" + firstId + "\"], [\"" + secondId + "\"]]}");
+        // Mark both appended TransactionIds as already present in the ledger, then sync again.
+        String ledgerBody = sheets.requests.stream()
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'_sync'!A2:B:append?valueInputOption=RAW"))
+                .findFirst().orElseThrow().body();
+        JsonArray ledgerValues = JsonParser.parseString(ledgerBody).getAsJsonObject().getAsJsonArray("values");
+        String firstId = ledgerValues.get(0).getAsJsonArray().get(1).getAsString();
+        String secondId = ledgerValues.get(1).getAsJsonArray().get(1).getAsString();
+        sheets.stub("/sheet-1/values/'_sync'!A:B",
+                "{\"values\": [[\"Agosto 2026\",\"" + firstId + "\"], [\"Agosto 2026\",\"" + secondId + "\"]]}");
 
         Result second = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
         assertEquals(0, second.exitCode());
@@ -237,7 +245,7 @@ class MainCommandsTest {
 
         assertEquals(0, result.exitCode());
         String appendBody = sheets.requests.stream()
-                .filter(r -> "POST".equals(r.method()) && r.url().endsWith(":append?valueInputOption=RAW"))
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'Agosto%202026'!A1:F:append?valueInputOption=RAW"))
                 .findFirst().orElseThrow().body();
         assertEquals("uuid-1", JsonParser.parseString(appendBody).getAsJsonObject()
                 .getAsJsonArray("values").get(0).getAsJsonArray().get(5).getAsString());
@@ -273,22 +281,22 @@ class MainCommandsTest {
         assertEquals(0, first.exitCode());
         assertTrue(first.stdout().contains("appended 2 new row(s)"));
 
-        // Two distinct addSheet bodies, one per month.
+        // Three distinct addSheet bodies: two months plus the hidden _sync ledger.
         List<String> addSheetBodies = sheets.requests.stream()
                 .filter(r -> "POST".equals(r.method()) && r.url().endsWith("/sheet-1:batchUpdate"))
                 .map(r -> r.body()).toList();
-        assertEquals(2, addSheetBodies.size());
+        assertEquals(3, addSheetBodies.size());
         Set<String> createdTitles = new java.util.HashSet<>();
         for (String body : addSheetBodies) {
             createdTitles.add(JsonParser.parseString(body).getAsJsonObject()
                     .getAsJsonArray("requests").get(0).getAsJsonObject()
                     .getAsJsonObject("addSheet").getAsJsonObject("properties").get("title").getAsString());
         }
-        assertEquals(Set.of("Julio 2026", "Agosto 2026"), createdTitles);
+        assertEquals(Set.of("Julio 2026", "Agosto 2026", "_sync"), createdTitles);
 
         // Two quoted appends; each contains exactly the row whose Fecha matches its tab.
         List<FakeHttp.Request> appends = sheets.requests.stream()
-                .filter(r -> "POST".equals(r.method()) && r.url().endsWith(":append?valueInputOption=RAW"))
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("!A1:F:append?valueInputOption=RAW"))
                 .toList();
         assertEquals(2, appends.size());
         Map<String, String> appendedIdsByMonth = new java.util.HashMap<>();
@@ -300,17 +308,23 @@ class MainCommandsTest {
             appendedIdsByMonth.put(month, rows.get(0).getAsJsonArray().get(4).getAsString());
         }
 
-        // Mark both months' ids as present and re-stub metadata with the created tabs, then sync again.
-        stubSpreadsheetTitles(sheets, "Hoja 1", "Julio 2026", "Agosto 2026");
-        sheets.stub("/sheet-1/values/'Julio%202026'!E2:E",
-                "{\"values\": [[\"" + appendedIdsByMonth.get("2026-07") + "\"]]}");
-        sheets.stub("/sheet-1/values/'Agosto%202026'!E2:E",
-                "{\"values\": [[\"" + appendedIdsByMonth.get("2026-08") + "\"]]}");
+        // Mark both months' ids as present in the ledger and re-stub metadata with the created tabs.
+        stubSpreadsheetTitles(sheets, "Hoja 1", "Julio 2026", "Agosto 2026", "_sync");
+        List<FakeHttp.Request> ledgerAppends = sheets.requests.stream()
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'_sync'!A2:B:append?valueInputOption=RAW"))
+                .toList();
+        assertEquals(2, ledgerAppends.size());
+        String julioId = JsonParser.parseString(ledgerAppends.get(0).body()).getAsJsonObject()
+                .getAsJsonArray("values").get(0).getAsJsonArray().get(1).getAsString();
+        String agostoId = JsonParser.parseString(ledgerAppends.get(1).body()).getAsJsonObject()
+                .getAsJsonArray("values").get(0).getAsJsonArray().get(1).getAsString();
+        sheets.stub("/sheet-1/values/'_sync'!A:B",
+                "{\"values\": [[\"Julio 2026\",\"" + julioId + "\"], [\"Agosto 2026\",\"" + agostoId + "\"]]}");
 
         Result second = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
         assertEquals(0, second.exitCode());
         assertTrue(second.stdout().contains("appended 0 new row(s), skipped 2 duplicate(s)"));
-        assertEquals(2, sheets.requests.stream()
+        assertEquals(3, sheets.requests.stream()
                 .filter(r -> "POST".equals(r.method()) && r.url().endsWith("/sheet-1:batchUpdate")).count());
     }
 
@@ -342,7 +356,7 @@ class MainCommandsTest {
 
         assertEquals(0, result.exitCode());
         List<FakeHttp.Request> appends = sheets.requests.stream()
-                .filter(r -> "POST".equals(r.method()) && r.url().endsWith(":append?valueInputOption=RAW"))
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'Agosto%202026'!A1:F:append?valueInputOption=RAW"))
                 .toList();
         assertEquals(1, appends.size());
         JsonArray rows = JsonParser.parseString(appends.get(0).body()).getAsJsonObject()
@@ -373,18 +387,24 @@ class MainCommandsTest {
                 .filter(r -> "POST".equals(r.method())
                         && r.url().endsWith("/values/'Agosto%202026'!A1:F:append?valueInputOption=RAW"))
                 .findFirst().orElseThrow().body();
-        String transactionId = JsonParser.parseString(appendBody).getAsJsonObject()
-                .getAsJsonArray("values").get(0).getAsJsonArray().get(4).getAsString();
+        String ledgerBody = sheets.requests.stream()
+                .filter(r -> "POST".equals(r.method())
+                        && r.url().endsWith("'_sync'!A2:B:append?valueInputOption=RAW"))
+                .findFirst().orElseThrow().body();
+        String transactionId = JsonParser.parseString(ledgerBody).getAsJsonObject()
+                .getAsJsonArray("values").get(0).getAsJsonArray().get(1).getAsString();
         int requestsAfterRun1 = sheets.requests.size();
 
-        // Run 2: the month tab already holds the id; no append may happen.
-        sheets.stub("/sheet-1/values/'Agosto%202026'!E2:E", "{\"values\": [[\"" + transactionId + "\"]]}");
+        // Run 2: the ledger already holds the id; no visible append may happen.
+        sheets.stub("/sheet-1/values/'_sync'!A:B",
+                "{\"values\": [[\"Agosto 2026\",\"" + transactionId + "\"]]}");
+        stubSpreadsheetTitles(sheets, "Agosto 2026", "_sync");
 
         Result second = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
         assertEquals(0, second.exitCode());
         assertTrue(second.stdout().contains("appended 0 new row(s), skipped 1 duplicate(s)"));
         assertTrue(sheets.requests.stream().skip(requestsAfterRun1)
-                .noneMatch(r -> r.url().contains(":append")));
+                .noneMatch(r -> r.url().endsWith("'Agosto%202026'!A1:F:append?valueInputOption=RAW")));
     }
 
     @Test
@@ -463,7 +483,8 @@ class MainCommandsTest {
         http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", NOMINA_TRANSACTION_JSON);
         FakeHttp sheets = SheetsTestSupport.fakeHttp();
         stubSpreadsheetTitles(sheets, "Agosto 2026");
-        sheets.stub("/sheet-1/values/'Agosto%202026'!E2:E", 403, "{\"error\":{\"message\":\"permission denied\"}}");
+        stubLedger(sheets, "{}");
+        sheets.stub("/sheet-1/values/'_sync'!A:B", 403, "{\"error\":{\"message\":\"permission denied\"}}");
         Path stateFile = sessionState();
 
         Result result = runEnableBanking(http, sheets, stateFile, enableBankingConfig(""), "sync");
@@ -570,12 +591,20 @@ class MainCommandsTest {
         sheets.stub("/sheet-1?fields=sheets.properties.title", json.toString());
     }
 
-    /** Stubs one existing month tab: header row, empty id column, and a successful append. */
+    /** Stubs one existing month tab: header row, empty ledger, and a successful append. */
     private static void stubMonthSheet(FakeHttp sheets, String title) {
         String encoded = title.replace(" ", "%20");
         sheets.stub("/sheet-1/values/'" + encoded + "'!A1:F1", HEADER_JSON);
-        sheets.stub("/sheet-1/values/'" + encoded + "'!E2:E", "{}");
+        stubLedger(sheets, "{}");
         sheets.stub("/sheet-1/values/'" + encoded + "'!A1:F:append?valueInputOption=RAW",
                 "{\"spreadsheetId\":\"sheet-1\"}");
+    }
+
+    /** Stubs the hidden _sync ledger: tab creation, read range, header append, and data append. */
+    private static void stubLedger(FakeHttp sheets, String dataJson) {
+        sheets.stub("/sheet-1:batchUpdate", "{\"spreadsheetId\":\"sheet-1\"}");
+        sheets.stub("/sheet-1/values/'_sync'!A:B", dataJson);
+        sheets.stub("/sheet-1/values/'_sync'!A1:B:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
+        sheets.stub("/sheet-1/values/'_sync'!A2:B:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
     }
 }
