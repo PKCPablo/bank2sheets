@@ -212,10 +212,11 @@ public final class Main {
 
     /**
      * Fetches transactions for every configured account and appends the ones not
-     * already present in their month tab. Each row is routed to the tab named
-     * after the transaction's calendar month ({@code YYYY-MM}, from
+     * already present in their month tab. Each row is routed to the tab titled
+     * with the Spanish month name and year (e.g. {@code Enero 2026}, from
      * {@code madeOn()}) and labeled with the source account (provider display
-     * name, falling back to the account id); tabs are created on demand. Dedupe
+     * name, falling back to the account id); tabs are created on demand. Each
+     * month's new rows are appended in ascending {@code Fecha} order. Dedupe
      * is per month tab on the TransactionId column, plus an in-run id set, so
      * repeated runs append nothing new (idempotency). Exits 0 on success and 1
      * on missing configuration or provider/Sheets errors.

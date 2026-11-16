@@ -295,9 +295,9 @@ public final class GoogleSheetsClient {
     }
 
     private String valuesUrl(String range) {
-        // Spreadsheet ids and A1 ranges contain only URL-safe characters (the
-        // quoted month title's apostrophe is a legal URI sub-delim), so no
-        // encoding: URLEncoder would turn the range colon into %3A.
+        // The range is pre-encoded by quoted(): spaces become %20 while the
+        // apostrophe, ! and : stay literal (legal URI path characters). Do not use
+        // URLEncoder: it would turn the range colon into %3A and spaces into +.
         return API_BASE + "/" + config.spreadsheetId() + "/values/" + range;
     }
 
