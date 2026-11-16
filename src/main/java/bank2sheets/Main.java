@@ -216,10 +216,11 @@ public final class Main {
      * with the Spanish month name and year (e.g. {@code Enero 2026}, from
      * {@code madeOn()}) and labeled with the source account (provider display
      * name, falling back to the account id); tabs are created on demand. Each
-     * month's new rows are appended in ascending {@code Fecha} order. Dedupe
-     * is per month tab on the TransactionId column, plus an in-run id set, so
-     * repeated runs append nothing new (idempotency). Exits 0 on success and 1
-     * on missing configuration or provider/Sheets errors.
+     * month's new rows are appended in ascending {@code Fecha} order. Dedupe is
+     * exact on the transaction id against the hidden {@code _sync} ledger (per
+     * month tab), plus an in-run id set, so repeated runs append nothing new
+     * (idempotency). Exits 0 on success and 1 on missing configuration or
+     * provider/Sheets errors.
      */
     private int sync() {
         AppConfig resolved = requireFetchConfig("sync");
@@ -245,8 +246,8 @@ public final class Main {
                     }
                     YearMonth month = YearMonth.from(transaction.madeOn());
                     byMonth.computeIfAbsent(month, m -> new ArrayList<>())
-                            .add(new SheetRow(transaction.madeOn().toString(), transaction.description(),
-                                    transaction.amount(), transaction.currency(), transaction.id(), label));
+                            .add(new SheetRow(transaction.madeOn(), transaction.amount(),
+                                    transaction.description(), label, transaction.id()));
                 }
             }
             int appended = 0;
