@@ -6,7 +6,7 @@ Do **not** load all `docs/ai/**` by default.
 
 ## Repository Status
 
-v1 MVP is implemented and validated: Enable Banking restricted production is the only provider, Sheets sync is idempotent per month tab (rows go to `YYYY-MM` tabs created on demand; the legacy flat first tab is left untouched and not migrated), multi-account rows carry `Cuenta`, and monthly GitHub Actions sync is verified. Test suite green; JaCoCo 80% line gate met. Latest change: issue #8 completed via `plans/2026-11-16_002309-monthly-sheets-tabs.md`.
+v1 MVP is implemented and validated: Enable Banking restricted production is the only provider, Sheets sync is idempotent per month tab (rows go to Spanish month tabs like `Enero 2026`, created on demand, appended in ascending `Fecha` order; the legacy flat first tab is left untouched and not migrated), multi-account rows carry `Cuenta`, and monthly GitHub Actions sync is verified. Test suite green; JaCoCo 80% line gate met. Latest change: Spanish month tabs and ascending order shipped via `plans/2026-11-16_010003-spanish-month-tabs-ascending-dates.md`.
 
 Details live in `architecture.md`, `decisions/`, `plans/`, and `logs/`; this status changes only when the project status changes, not for every feature.
 

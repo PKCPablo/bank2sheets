@@ -129,7 +129,7 @@ GOOGLE_SPREADSHEET_ID=<spreadsheet id>
 .\scripts\run.ps1 sync
 ```
 
-The first `sync` appends the new rows into one tab per month (`YYYY-MM`, derived from each transaction's date; the tab and its header row are created on demand); the second reports `appended 0 new row(s)` and skips the duplicates. See [Google Sheets layout](#google-sheets-layout).
+The first `sync` appends the new rows into one tab per month, titled with the Spanish month name and year from each transaction's date (e.g. `Enero 2026`, `Febrero 2026`; the tab and its header row are created on demand); the second reports `appended 0 new row(s)` and skips the duplicates. See [Google Sheets layout](#google-sheets-layout).
 
 ### 9. Scheduled sync (optional)
 
@@ -250,7 +250,11 @@ Caveats:
 
 ## Google Sheets layout
 
-`sync` writes one tab per month, named `YYYY-MM` from each transaction's date (e.g. `2026-11`), and creates the tab and its header row on demand. Every tab has the same six columns: `Fecha`, `Descripción`, `Importe`, `Moneda`, `TransactionId`, `Cuenta`. Rows are appended with `valueInputOption=RAW`, so amounts (e.g. `1200.50`) stay numeric cells instead of text or formulas. TransactionId is the dedupe key per month tab: running `sync` twice appends no duplicates.
+`sync` writes one tab per month, titled with the Spanish month name and year from each transaction's date (e.g. `Enero 2026`, `Febrero 2026`), and creates the tab and its header row on demand. Rows within each append are written in ascending `Fecha` order (same-day rows keep the provider's order); existing rows are never rewritten, so a late-arriving transaction with an older date lands at the end of the tab. Every tab has the same six columns: `Fecha`, `Descripción`, `Importe`, `Moneda`, `TransactionId`, `Cuenta`. Rows are appended with `valueInputOption=RAW`, so amounts (e.g. `1200.50`) stay numeric cells instead of text or formulas. TransactionId is the dedupe key per month tab: running `sync` twice appends no duplicates.
+
+Tabs from older versions titled `YYYY-MM` (e.g. `2026-11`) are not migrated automatically. To keep that history and its dedupe, rename the tab manually to the Spanish title (e.g. `2026-11` → `Noviembre 2026`); otherwise `sync` creates a new Spanish-named tab and may re-append the provider history into it.
+
+One spreadsheet per year is a manual switch, not a configuration option: before the first sync that returns new-year transactions (with the monthly cron, before the February 1 run), update `GOOGLE_SPREADSHEET_ID` in `.env` and in the Actions secret. If you switch late, the new-year tabs are created in the old spreadsheet.
 
 `Cuenta` holds the source account label: the provider account display name when non-blank, otherwise the provider account id. `BANK2SHEETS_ACCOUNTS` may list multiple accounts; all rows go to the same spreadsheet, into the month tab derived from each transaction's date, and dedupe stays per month tab on `TransactionId`.
 
