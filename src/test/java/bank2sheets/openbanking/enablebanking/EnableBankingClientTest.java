@@ -36,6 +36,7 @@ class EnableBankingClientTest {
     private static final String BASE = "https://api.enablebanking.com";
     private static final long NOW = 1_000_000_000L;
     private static final String STATE = "state-1";
+    private static final String HASH_PREFIX = "eb:sha256:";
 
     /** Stubs the simple {@code /auth} response used by most connect tests. */
     private static void stubAuth(FakeHttp http) {
@@ -174,14 +175,7 @@ class EnableBankingClientTest {
     @Test
     void listAccountsMapsUuidAndDetailsNameAndToleratesDetailsFailure() {
         FakeHttp http = new FakeHttp(BASE);
-        http.stub("/sessions/sess-1", """
-                {"status": "AUTHORIZED",
-                 "accounts": ["uuid-1", "uuid-2"],
-                 "accounts_data": [
-                   {"uid": "uuid-1", "identification_hash": "h1"},
-                   {"uid": "uuid-2", "identification_hash": "h2"}
-                 ]}
-                """);
+        http.stub("/sessions/sess-1", "{\"status\": \"AUTHORIZED\", \"accounts\": [\"uuid-1\", \"uuid-2\"]}");
         http.stub("/accounts/uuid-1/details", "{\"account_id\": \"uuid-1\", \"name\": \"Cuenta Nominas\"}");
         http.responses.put("/accounts/uuid-2/details", new Response(500, "{\"error\": \"boom\"}"));
         EnableBankingClient client = client(http, () -> "");
@@ -395,7 +389,7 @@ class EnableBankingClientTest {
 
     /** Mirrors the client's short hash: first 16 hex chars of the canonical-fields sha256. */
     private static String shortHash(String canonical) {
-        return hashId(canonical).substring("eb:sha256:".length()).substring(0, 16);
+        return hashId(canonical).substring(HASH_PREFIX.length(), HASH_PREFIX.length() + 16);
     }
 
     /** Mirrors the client's reference-based id: {@code eb:<reference>:<16-hex short hash>}. */
@@ -406,7 +400,7 @@ class EnableBankingClientTest {
     /** Mirrors the client's canonical fallback: {@code eb:sha256:} + sha256 hex of the fields. */
     private static String hashId(String canonical) {
         try {
-            return "eb:sha256:" + HexFormat.of().formatHex(
+            return HASH_PREFIX + HexFormat.of().formatHex(
                     java.security.MessageDigest.getInstance("SHA-256")
                             .digest(canonical.getBytes(StandardCharsets.UTF_8)));
         } catch (java.security.NoSuchAlgorithmException e) {

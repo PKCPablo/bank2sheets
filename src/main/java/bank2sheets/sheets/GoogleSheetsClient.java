@@ -76,12 +76,10 @@ public final class GoogleSheetsClient {
     private final SheetsConfig config;
     private final HttpExchange http;
     private String accessToken;
-    /** Titles of the spreadsheet tabs, loaded lazily once per client instance. */
-    private final Set<String> sheetTitles = new HashSet<>();
-    private boolean sheetTitlesLoaded;
-    /** Appended transaction ids per tab title, read lazily once from the helper tab. */
+    /** Titles of the spreadsheet tabs; null until the first metadata read. */
+    private Set<String> sheetTitles;
+    /** Appended transaction ids per tab title; null until the first ledger read. */
     private Map<String, Set<String>> ledger;
-    private boolean ledgerLoaded;
 
     public GoogleSheetsClient(SheetsConfig config, HttpExchange http) {
         this.config = config;
@@ -172,7 +170,7 @@ public final class GoogleSheetsClient {
 
     /** Loads the spreadsheet's tab titles once per client instance. */
     private void ensureSheetTitles() {
-        if (sheetTitlesLoaded) {
+        if (sheetTitles != null) {
             return;
         }
         Response response = http.exchange("GET",
@@ -180,15 +178,16 @@ public final class GoogleSheetsClient {
                 Map.of("Authorization", "Bearer " + accessToken()), null);
         requireOk(response, "metadata");
         JsonObject spreadsheet = JsonSupport.parseObject(response.body());
+        Set<String> loaded = new HashSet<>();
         if (spreadsheet.has("sheets")) {
             for (JsonElement sheet : spreadsheet.getAsJsonArray("sheets")) {
                 JsonObject properties = sheet.getAsJsonObject().getAsJsonObject("properties");
                 if (properties != null && properties.has("title")) {
-                    sheetTitles.add(properties.get("title").getAsString());
+                    loaded.add(properties.get("title").getAsString());
                 }
             }
         }
-        sheetTitlesLoaded = true;
+        sheetTitles = loaded;
     }
 
     /** Creates a tab via one {@code addSheet} batchUpdate; {@code hidden} adds {@code "hidden": true}. */
@@ -229,7 +228,7 @@ public final class GoogleSheetsClient {
      * {@code '_sync'!A:B}; blank rows and the {@code Tab} header row are skipped.
      */
     private Map<String, Set<String>> ledger() {
-        if (!ledgerLoaded) {
+        if (ledger == null) {
             ensureHelperSheet();
             Map<String, Set<String>> loaded = new HashMap<>();
             JsonObject result = readValues(quoted(HELPER_TITLE) + HELPER_READ_RANGE_SUFFIX, accessToken());
@@ -244,7 +243,6 @@ public final class GoogleSheetsClient {
                 loaded.computeIfAbsent(tab, key -> new HashSet<>()).add(id);
             }
             ledger = loaded;
-            ledgerLoaded = true;
         }
         return ledger;
     }

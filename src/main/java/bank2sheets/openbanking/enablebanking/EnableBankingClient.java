@@ -10,7 +10,6 @@ import bank2sheets.http.Rs256Jwt;
 import bank2sheets.model.Account;
 import bank2sheets.model.Transaction;
 import bank2sheets.openbanking.TransactionSource;
-import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.math.BigDecimal;
@@ -20,9 +19,11 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.net.URI;
@@ -84,7 +85,8 @@ public final class EnableBankingClient implements TransactionSource {
         pendingState = UUID.randomUUID().toString();
 
         JsonObject access = new JsonObject();
-        access.addProperty("valid_until", now().plusSeconds(validitySeconds).toString());
+        access.addProperty("valid_until",
+                Instant.ofEpochSecond(epochSeconds.getAsLong()).plusSeconds(validitySeconds).toString());
         JsonObject aspsp = new JsonObject();
         aspsp.addProperty("name", config.aspspName());
         aspsp.addProperty("country", config.aspspCountry());
@@ -349,7 +351,7 @@ public final class EnableBankingClient implements TransactionSource {
         String message = "Enable Banking request failed (HTTP " + response.status()
                 + "): " + method + " " + path + " -> " + response.body();
         if (response.status() == 429
-                && response.body().toUpperCase(java.util.Locale.ROOT).contains("ASPSP_RATE_LIMIT_EXCEEDED")) {
+                && response.body().toUpperCase(Locale.ROOT).contains("ASPSP_RATE_LIMIT_EXCEEDED")) {
             message += " The bank's background AIS access allowance for this consent is used up"
                     + " (ASPSP_RATE_LIMIT_EXCEEDED; commonly ~4 accesses per 24 h)."
                     + " Retrying now will not help: wait ~6 hours or until the next day,"
@@ -385,16 +387,12 @@ public final class EnableBankingClient implements TransactionSource {
     /** Decodes the base64 env value into the PKCS#8 PEM text. */
     private String privateKeyPem() {
         try {
-            return new String(java.util.Base64.getDecoder().decode(config.privateKeyB64()),
+            return new String(Base64.getDecoder().decode(config.privateKeyB64()),
                     StandardCharsets.UTF_8);
         } catch (IllegalArgumentException e) {
             throw new Bank2SheetsException(
                     "ENABLE_BANKING_PRIVATE_KEY_B64 is not valid base64 (expected base64 PKCS#8 PEM)", e);
         }
-    }
-
-    private Instant now() {
-        return Instant.ofEpochSecond(epochSeconds.getAsLong());
     }
 
     private static String queryParam(String url, String name) {

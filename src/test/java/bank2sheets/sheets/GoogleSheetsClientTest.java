@@ -38,10 +38,8 @@ class GoogleSheetsClientTest {
     @Test
     void existingTransactionIdsForExistingMonthReadsQuotedRange() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1?fields=sheets.properties.title",
-                "{\"sheets\":[{\"properties\":{\"title\":\"Agosto 2026\"}},"
-                        + "{\"properties\":{\"title\":\"_sync\"}}]}");
-        http.stub("/sheet-1/values/'_sync'!A:B", """
+        SheetsTestSupport.stubSheetTitles(http, "Agosto 2026", "_sync");
+        SheetsTestSupport.stubLedgerRead(http, """
                 {"values":[["Tab","TransactionId"],["Agosto 2026","t1"],["Julio 2026","t9"],["Agosto 2026","t2"]]}
                 """);
         GoogleSheetsClient client = client(http);
@@ -104,10 +102,8 @@ class GoogleSheetsClientTest {
     @Test
     void existingTransactionIdsIsEmptyWhenSheetHasNoData() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1?fields=sheets.properties.title",
-                "{\"sheets\":[{\"properties\":{\"title\":\"Agosto 2026\"}},"
-                        + "{\"properties\":{\"title\":\"_sync\"}}]}");
-        http.stub("/sheet-1/values/'_sync'!A:B", "{}");
+        SheetsTestSupport.stubSheetTitles(http, "Agosto 2026", "_sync");
+        SheetsTestSupport.stubLedgerRead(http, "{}");
         GoogleSheetsClient client = client(http);
 
         assertTrue(client.existingTransactionIds(YearMonth.of(2026, 8)).isEmpty());
@@ -116,10 +112,8 @@ class GoogleSheetsClientTest {
     @Test
     void tokenRequestUsesJwtBearerGrantAndCachesToken() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1?fields=sheets.properties.title",
-                "{\"sheets\":[{\"properties\":{\"title\":\"Agosto 2026\"}},"
-                        + "{\"properties\":{\"title\":\"_sync\"}}]}");
-        http.stub("/sheet-1/values/'_sync'!A:B", "{}");
+        SheetsTestSupport.stubSheetTitles(http, "Agosto 2026", "_sync");
+        SheetsTestSupport.stubLedgerRead(http, "{}");
         GoogleSheetsClient client = client(http);
 
         client.existingTransactionIds(YearMonth.of(2026, 8));
@@ -142,12 +136,7 @@ class GoogleSheetsClientTest {
     @Test
     void appendRowsWritesHeaderThenDataWithAmountsAsNumbers() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1?fields=sheets.properties.title",
-                "{\"sheets\":[{\"properties\":{\"title\":\"Agosto 2026\"}},"
-                        + "{\"properties\":{\"title\":\"_sync\"}}]}");
-        http.stub("/sheet-1/values/'Agosto%202026'!A1:D1", "{}");
-        http.stub("/sheet-1/values/'Agosto%202026'!A1:D:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
-        http.stub("/sheet-1/values/'_sync'!A:B", "{}");
+        SheetsTestSupport.stubExistingMonth(http, "Agosto 2026", "{}");
         http.stub("/sheet-1/values/'_sync'!A2:B:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
         GoogleSheetsClient client = client(http);
 
@@ -160,7 +149,7 @@ class GoogleSheetsClientTest {
         FakeHttp.Request headerAppend = http.requests.get(4);
         assertEquals("POST", headerAppend.method());
         assertTrue(headerAppend.url().endsWith(":append?valueInputOption=RAW"));
-        assertEquals("{\"values\":[[\"Fecha\",\"Importe\",\"Descripción\",\"Cuenta\"]]}",
+        assertEquals(SheetsTestSupport.HEADER_JSON,
                 headerAppend.body());
 
         FakeHttp.Request dataAppend = http.requests.get(5);
@@ -179,13 +168,7 @@ class GoogleSheetsClientTest {
     @Test
     void appendRowsRecordsTransactionIdsInHiddenLedger() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1?fields=sheets.properties.title",
-                "{\"sheets\":[{\"properties\":{\"title\":\"Agosto 2026\"}},"
-                        + "{\"properties\":{\"title\":\"_sync\"}}]}");
-        http.stub("/sheet-1/values/'Agosto%202026'!A1:D1",
-                "{\"values\":[[\"Fecha\",\"Importe\",\"Descripción\",\"Cuenta\"]]}");
-        http.stub("/sheet-1/values/'Agosto%202026'!A1:D:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
-        http.stub("/sheet-1/values/'_sync'!A:B", "{}");
+        SheetsTestSupport.stubExistingMonth(http, "Agosto 2026", SheetsTestSupport.HEADER_JSON);
         http.stub("/sheet-1/values/'_sync'!A2:B:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
         GoogleSheetsClient client = client(http);
 
@@ -207,13 +190,7 @@ class GoogleSheetsClientTest {
     @Test
     void ledgerAppendFailureThrowsAfterVisibleAppend() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1?fields=sheets.properties.title",
-                "{\"sheets\":[{\"properties\":{\"title\":\"Agosto 2026\"}},"
-                        + "{\"properties\":{\"title\":\"_sync\"}}]}");
-        http.stub("/sheet-1/values/'Agosto%202026'!A1:D1",
-                "{\"values\":[[\"Fecha\",\"Importe\",\"Descripción\",\"Cuenta\"]]}");
-        http.stub("/sheet-1/values/'Agosto%202026'!A1:D:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
-        http.stub("/sheet-1/values/'_sync'!A:B", "{}");
+        SheetsTestSupport.stubExistingMonth(http, "Agosto 2026", SheetsTestSupport.HEADER_JSON);
         http.stub("/sheet-1/values/'_sync'!A2:B:append?valueInputOption=RAW", 500, "{\"error\":{\"message\":\"boom\"}}");
         GoogleSheetsClient client = client(http);
 
@@ -230,14 +207,7 @@ class GoogleSheetsClientTest {
     @Test
     void appendRowsSortsRowsByDateAscending() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1?fields=sheets.properties.title",
-                "{\"sheets\":[{\"properties\":{\"title\":\"Agosto 2026\"}},"
-                        + "{\"properties\":{\"title\":\"_sync\"}}]}");
-        http.stub("/sheet-1/values/'Agosto%202026'!A1:D1",
-                "{\"values\":[[\"Fecha\",\"Importe\",\"Descripción\",\"Cuenta\"]]}");
-        http.stub("/sheet-1/values/'Agosto%202026'!A1:D:append?valueInputOption=RAW",
-                "{\"spreadsheetId\":\"sheet-1\"}");
-        http.stub("/sheet-1/values/'_sync'!A:B", "{}");
+        SheetsTestSupport.stubExistingMonth(http, "Agosto 2026", SheetsTestSupport.HEADER_JSON);
         http.stub("/sheet-1/values/'_sync'!A2:B:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
         GoogleSheetsClient client = client(http);
 
@@ -256,13 +226,7 @@ class GoogleSheetsClientTest {
     @Test
     void appendRowsSkipsHeaderWhenAlreadyPresent() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1?fields=sheets.properties.title",
-                "{\"sheets\":[{\"properties\":{\"title\":\"Agosto 2026\"}},"
-                        + "{\"properties\":{\"title\":\"_sync\"}}]}");
-        http.stub("/sheet-1/values/'Agosto%202026'!A1:D1",
-                "{\"values\":[[\"Fecha\",\"Importe\",\"Descripción\",\"Cuenta\"]]}");
-        http.stub("/sheet-1/values/'Agosto%202026'!A1:D:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
-        http.stub("/sheet-1/values/'_sync'!A:B", "{}");
+        SheetsTestSupport.stubExistingMonth(http, "Agosto 2026", SheetsTestSupport.HEADER_JSON);
         http.stub("/sheet-1/values/'_sync'!A2:B:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
         GoogleSheetsClient client = client(http);
 
@@ -280,13 +244,8 @@ class GoogleSheetsClientTest {
     @Test
     void appendRowsRejectsLegacySixColumnHeader() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1?fields=sheets.properties.title",
-                "{\"sheets\":[{\"properties\":{\"title\":\"Agosto 2026\"}},"
-                        + "{\"properties\":{\"title\":\"_sync\"}}]}");
-        http.stub("/sheet-1/values/'Agosto%202026'!A1:D1",
+        SheetsTestSupport.stubExistingMonth(http, "Agosto 2026",
                 "{\"values\":[[\"Fecha\",\"Descripción\",\"Importe\",\"Moneda\",\"TransactionId\",\"Cuenta\"]]}");
-        http.stub("/sheet-1/values/'Agosto%202026'!A1:D:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
-        http.stub("/sheet-1/values/'_sync'!A:B", "{}");
         http.stub("/sheet-1/values/'_sync'!A2:B:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
         GoogleSheetsClient client = client(http);
 

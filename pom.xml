@@ -47,7 +47,7 @@
       <artifactId>gson</artifactId>
       <version>2.11.0</version>
     </dependency>
-    <!-- Test only: smoke test in Phase 1, unit tests in Phases 2-3 -->
+    <!-- Test only: JUnit 5 suite -->
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>

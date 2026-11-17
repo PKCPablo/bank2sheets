@@ -163,19 +163,12 @@ public final class Main {
         }
         try {
             TransactionSource source = sources.apply(resolved);
-            boolean needsNames = resolved.accounts().stream().anyMatch(a -> a.label().isBlank());
-            Map<String, String> accountNames = needsNames ? accountNames(source) : Map.of();
+            Map<String, String> names = accountLabels(resolved, source);
             for (AccountConfig account : resolved.accounts()) {
                 List<Transaction> transactions = source.fetchTransactions(account.providerAccountId());
-                String name = account.label();
-                if (name.isBlank()) {
-                    name = accountNames.getOrDefault(account.providerAccountId(), "");
-                }
-                if (name.isBlank()) {
-                    name = account.providerAccountId();
-                }
-                System.out.println("Account " + account.providerAccountId()
-                        + (name.isBlank() ? "" : " (" + name + ")") + ": " + transactions.size() + " transaction(s)");
+                String name = accountLabel(account, names);
+                System.out.println("Account " + account.providerAccountId() + " (" + name + "): "
+                        + transactions.size() + " transaction(s)");
                 for (Transaction transaction : transactions) {
                     System.out.println(toJson(transaction));
                 }
@@ -239,19 +232,12 @@ public final class Main {
         try {
             GoogleSheetsClient sheetsClient = sheets.get();
             TransactionSource source = sources.apply(resolved);
-            boolean needsNames = resolved.accounts().stream().anyMatch(a -> a.label().isBlank());
-            Map<String, String> accountLabels = needsNames ? accountNames(source) : Map.of();
+            Map<String, String> labels = accountLabels(resolved, source);
             Map<YearMonth, List<SheetRow>> byMonth = new TreeMap<>();
             Set<String> seen = new HashSet<>();
             int fetched = 0;
             for (AccountConfig account : resolved.accounts()) {
-                String label = account.label();
-                if (label.isBlank()) {
-                    label = accountLabels.getOrDefault(account.providerAccountId(), "");
-                }
-                if (label.isBlank()) {
-                    label = account.providerAccountId();
-                }
+                String label = accountLabel(account, labels);
                 for (Transaction transaction : source.fetchTransactions(account.providerAccountId())) {
                     fetched++;
                     if (!seen.add(transaction.id())) {
@@ -287,12 +273,24 @@ public final class Main {
         }
     }
 
+    /** Configured label, else provider display name, else the provider account id. */
+    private static String accountLabel(AccountConfig account, Map<String, String> names) {
+        String label = account.label();
+        if (label.isBlank()) {
+            label = names.getOrDefault(account.providerAccountId(), "");
+        }
+        return label.isBlank() ? account.providerAccountId() : label;
+    }
+
     /**
-     * Account id -> raw display name, from a single {@code listAccounts()} call.
-     * Only needed when at least one configured account lacks a label; fully
-     * labelled configs skip the session/details accesses entirely.
+     * Account id -> display name from one {@code listAccounts()} call, or an
+     * empty map when every configured account already has a label (so no
+     * session/details accesses are spent).
      */
-    private static Map<String, String> accountNames(TransactionSource source) {
+    private static Map<String, String> accountLabels(AppConfig cfg, TransactionSource source) {
+        if (cfg.accounts().stream().noneMatch(account -> account.label().isBlank())) {
+            return Map.of();
+        }
         Map<String, String> names = new HashMap<>();
         for (Account account : source.listAccounts()) {
             names.put(account.id(), account.name());

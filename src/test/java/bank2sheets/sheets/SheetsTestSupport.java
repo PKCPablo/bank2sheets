@@ -47,4 +47,39 @@ public final class SheetsTestSupport {
         http.stub("https://oauth2.googleapis.com/token",
                 "{\"access_token\":\"tok-123\",\"token_type\":\"Bearer\",\"expires_in\":3599}");
     }
+
+    /** Header row body shared by the Sheets and Main sync tests. */
+    public static final String HEADER_JSON =
+            "{\"values\":[[\"Fecha\",\"Importe\",\"Descripci\u00f3n\",\"Cuenta\"]]}";
+
+    /** Stubs the spreadsheet metadata response with the given tab titles. */
+    public static void stubSheetTitles(FakeHttp http, String... titles) {
+        StringBuilder json = new StringBuilder("{\"sheets\":[");
+        for (int i = 0; i < titles.length; i++) {
+            if (i > 0) {
+                json.append(',');
+            }
+            json.append("{\"properties\":{\"title\":\"").append(titles[i]).append("\"}}");
+        }
+        json.append("]}");
+        http.stub("/sheet-1?fields=sheets.properties.title", json.toString());
+    }
+
+    /** Stubs the hidden _sync ledger read range with the given raw body. */
+    public static void stubLedgerRead(FakeHttp http, String dataJson) {
+        http.stub("/sheet-1/values/'_sync'!A:B", dataJson);
+    }
+
+    /**
+     * Stubs the common "existing month tab plus created _sync ledger" state:
+     * metadata, ledger read, month header, and the visible append.
+     */
+    public static void stubExistingMonth(FakeHttp http, String title, String headerJson) {
+        stubSheetTitles(http, title, "_sync");
+        stubLedgerRead(http, "{}");
+        String encoded = title.replace(" ", "%20");
+        http.stub("/sheet-1/values/'" + encoded + "'!A1:D1", headerJson);
+        http.stub("/sheet-1/values/'" + encoded + "'!A1:D:append?valueInputOption=RAW",
+                "{\"spreadsheetId\":\"sheet-1\"}");
+    }
 }

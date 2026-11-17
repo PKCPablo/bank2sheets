@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import bank2sheets.CliTestSupport.Result;
 import bank2sheets.config.AccountConfig;
 import bank2sheets.config.AppConfig;
+import bank2sheets.config.SheetsConfig;
 import bank2sheets.http.FakeHttp;
 import bank2sheets.http.HttpExchange.Response;
 import bank2sheets.openbanking.enablebanking.AuthorizationCodeReceiver;
@@ -28,10 +29,6 @@ import org.junit.jupiter.api.io.TempDir;
  * calls.
  */
 class MainCommandsTest {
-
-    /** Header row stub body shared by the sync tests. */
-    private static final String HEADER_JSON =
-            "{\"values\":[[\"Fecha\",\"Importe\",\"Descripción\",\"Cuenta\"]]}";
 
     /** Single NOMINA transaction payload shared by the sync/fetch tests. */
     private static final String NOMINA_TRANSACTION_JSON = """
@@ -491,7 +488,7 @@ class MainCommandsTest {
 
         Result result = CliTestSupport.capture(() -> new Main(c -> enableBankingClient(c, http),
                 () -> enableBankingConfig("sess-eb-1"),
-                () -> GoogleSheetsClient.create(new bank2sheets.config.SheetsConfig("", "")),
+                () -> GoogleSheetsClient.create(new SheetsConfig("", "")),
                 stateFile, () -> { })
                 .dispatch(new String[] {"sync"}));
 
@@ -624,21 +621,13 @@ class MainCommandsTest {
     /** Stubs the spreadsheet metadata response with the given tab titles. */
     private static void stubSpreadsheetTitles(FakeHttp sheets, String... titles) {
         SheetsTestSupport.stubToken(sheets);
-        StringBuilder json = new StringBuilder("{\"sheets\":[");
-        for (int i = 0; i < titles.length; i++) {
-            if (i > 0) {
-                json.append(",");
-            }
-            json.append("{\"properties\":{\"title\":\"").append(titles[i]).append("\"}}");
-        }
-        json.append("]}");
-        sheets.stub("/sheet-1?fields=sheets.properties.title", json.toString());
+        SheetsTestSupport.stubSheetTitles(sheets, titles);
     }
 
     /** Stubs one existing month tab: header row, empty ledger, and a successful append. */
     private static void stubMonthSheet(FakeHttp sheets, String title) {
         String encoded = title.replace(" ", "%20");
-        sheets.stub("/sheet-1/values/'" + encoded + "'!A1:D1", HEADER_JSON);
+        sheets.stub("/sheet-1/values/'" + encoded + "'!A1:D1", SheetsTestSupport.HEADER_JSON);
         stubLedger(sheets, "{}");
         sheets.stub("/sheet-1/values/'" + encoded + "'!A1:D:append?valueInputOption=RAW",
                 "{\"spreadsheetId\":\"sheet-1\"}");

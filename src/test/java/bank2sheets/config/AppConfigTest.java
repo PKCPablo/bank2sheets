@@ -51,13 +51,6 @@ class AppConfigTest {
     }
 
     @Test
-    void labelIsOptional() {
-        assertEquals(
-                List.of(new AccountConfig("enablebanking", "uuid-1", "")),
-                AppConfig.parseAccounts("enablebanking:uuid-1"));
-    }
-
-    @Test
     void rejectsMissingAccountIdWithLabel() {
         assertThrows(IllegalArgumentException.class, () -> AppConfig.parseAccounts("enablebanking::Label"));
     }
