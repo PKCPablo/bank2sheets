@@ -366,4 +366,143 @@ class GoogleSheetsClientTest {
         assertTrue(error.getMessage().contains("500"));
     }
 
+    @Test
+    void protectCompletedMonthsWarnsOnWholeClosedSheet() {
+        FakeHttp http = SheetsTestSupport.fakeHttp();
+        SheetsTestSupport.stubProtectionMetadata(http,
+                "{\"sheets\":[{\"properties\":{\"sheetId\":11,\"title\":\"Octubre 2026\"}}]}");
+        http.stub("/sheet-1:batchUpdate", "{\"spreadsheetId\":\"sheet-1\"}");
+        GoogleSheetsClient client = client(http);
+
+        assertEquals(1, client.protectCompletedMonths(YearMonth.of(2026, 11)));
+
+        assertEquals(1, http.requests.stream().filter(r -> r.url().contains(":batchUpdate")).count());
+        FakeHttp.Request post = http.requests.stream()
+                .filter(r -> r.url().contains(":batchUpdate")).findFirst().orElseThrow();
+        assertEquals("POST", post.method());
+        JsonObject protectedRange = JsonParser.parseString(post.body()).getAsJsonObject()
+                .getAsJsonArray("requests").get(0).getAsJsonObject()
+                .getAsJsonObject("addProtectedRange").getAsJsonObject("protectedRange");
+        assertEquals(true, protectedRange.get("warningOnly").getAsBoolean());
+        assertEquals(11, protectedRange.getAsJsonObject("range").get("sheetId").getAsInt());
+        assertFalse(protectedRange.getAsJsonObject("range").has("startRowIndex"));
+        assertFalse(protectedRange.getAsJsonObject("range").has("startColumnIndex"));
+    }
+
+    @Test
+    void protectCompletedMonthsSkipsCurrentAndFutureMonths() {
+        FakeHttp http = SheetsTestSupport.fakeHttp();
+        SheetsTestSupport.stubProtectionMetadata(http,
+                "{\"sheets\":["
+                        + "{\"properties\":{\"sheetId\":11,\"title\":\"Octubre 2026\"}},"
+                        + "{\"properties\":{\"sheetId\":12,\"title\":\"Noviembre 2026\"}},"
+                        + "{\"properties\":{\"sheetId\":13,\"title\":\"Diciembre 2026\"}}]}");
+        http.stub("/sheet-1:batchUpdate", "{\"spreadsheetId\":\"sheet-1\"}");
+        GoogleSheetsClient client = client(http);
+
+        assertEquals(1, client.protectCompletedMonths(YearMonth.of(2026, 11)));
+
+        String body = http.requests.stream().filter(r -> r.url().contains(":batchUpdate"))
+                .findFirst().orElseThrow().body();
+        assertTrue(body.contains("\"sheetId\":11"));
+        assertFalse(body.contains("\"sheetId\":12"));
+        assertFalse(body.contains("\"sheetId\":13"));
+    }
+
+    @Test
+    void protectCompletedMonthsIsIdempotentWhenAlreadyProtected() {
+        FakeHttp http = SheetsTestSupport.fakeHttp();
+        SheetsTestSupport.stubProtectionMetadata(http,
+                "{\"sheets\":[{\"properties\":{\"sheetId\":11,\"title\":\"Octubre 2026\"},"
+                        + "\"protectedRanges\":[{\"protectedRangeId\":7,\"warningOnly\":true}]}]}");
+        GoogleSheetsClient client = client(http);
+
+        assertEquals(0, client.protectCompletedMonths(YearMonth.of(2026, 11)));
+
+        assertTrue(http.requests.stream().noneMatch(r -> r.url().contains(":batchUpdate")));
+    }
+
+    @Test
+    void protectCompletedMonthsIgnoresNonMonthTabs() {
+        FakeHttp http = SheetsTestSupport.fakeHttp();
+        SheetsTestSupport.stubProtectionMetadata(http,
+                "{\"sheets\":["
+                        + "{\"properties\":{\"sheetId\":1,\"title\":\"_sync\"}},"
+                        + "{\"properties\":{\"sheetId\":2,\"title\":\"Hoja 1\"}},"
+                        + "{\"properties\":{\"sheetId\":11,\"title\":\"Octubre 2026\"}}]}");
+        http.stub("/sheet-1:batchUpdate", "{\"spreadsheetId\":\"sheet-1\"}");
+        GoogleSheetsClient client = client(http);
+
+        assertEquals(1, client.protectCompletedMonths(YearMonth.of(2026, 11)));
+
+        JsonArray requests = JsonParser.parseString(http.requests.stream()
+                .filter(r -> r.url().contains(":batchUpdate")).findFirst().orElseThrow().body())
+                .getAsJsonObject().getAsJsonArray("requests");
+        assertEquals(1, requests.size());
+        assertEquals(11, requests.get(0).getAsJsonObject().getAsJsonObject("addProtectedRange")
+                .getAsJsonObject("protectedRange").getAsJsonObject("range").get("sheetId").getAsInt());
+    }
+
+    @Test
+    void protectCompletedMonthsBatchesMultipleClosedMonths() {
+        FakeHttp http = SheetsTestSupport.fakeHttp();
+        SheetsTestSupport.stubProtectionMetadata(http,
+                "{\"sheets\":["
+                        + "{\"properties\":{\"sheetId\":7,\"title\":\"Julio 2026\"}},"
+                        + "{\"properties\":{\"sheetId\":11,\"title\":\"Octubre 2026\"}}]}");
+        http.stub("/sheet-1:batchUpdate", "{\"spreadsheetId\":\"sheet-1\"}");
+        GoogleSheetsClient client = client(http);
+
+        assertEquals(2, client.protectCompletedMonths(YearMonth.of(2026, 11)));
+
+        assertEquals(1, http.requests.stream().filter(r -> r.url().contains(":batchUpdate")).count());
+        JsonArray requests = JsonParser.parseString(http.requests.stream()
+                .filter(r -> r.url().contains(":batchUpdate")).findFirst().orElseThrow().body())
+                .getAsJsonObject().getAsJsonArray("requests");
+        assertEquals(2, requests.size());
+        assertEquals(7, requests.get(0).getAsJsonObject().getAsJsonObject("addProtectedRange")
+                .getAsJsonObject("protectedRange").getAsJsonObject("range").get("sheetId").getAsInt());
+        assertEquals(11, requests.get(1).getAsJsonObject().getAsJsonObject("addProtectedRange")
+                .getAsJsonObject("protectedRange").getAsJsonObject("range").get("sheetId").getAsInt());
+    }
+
+    @Test
+    void protectCompletedMonthsDoesNothingWhenNoCandidate() {
+        FakeHttp http = SheetsTestSupport.fakeHttp();
+        SheetsTestSupport.stubProtectionMetadata(http,
+                "{\"sheets\":[{\"properties\":{\"sheetId\":12,\"title\":\"Noviembre 2026\"}}]}");
+        GoogleSheetsClient client = client(http);
+
+        assertEquals(0, client.protectCompletedMonths(YearMonth.of(2026, 11)));
+
+        assertTrue(http.requests.stream().noneMatch(r -> r.url().contains(":batchUpdate")));
+    }
+
+    @Test
+    void protectCompletedMonthsNonSuccessMetadataThrows() {
+        FakeHttp http = SheetsTestSupport.fakeHttp();
+        http.stub(SheetsTestSupport.PROTECTION_METADATA_PATH, 403, "{\"error\":{\"message\":\"permission denied\"}}");
+        GoogleSheetsClient client = client(http);
+
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
+                () -> client.protectCompletedMonths(YearMonth.of(2026, 11)));
+        assertTrue(error.getMessage().contains("metadata failed"));
+        assertTrue(error.getMessage().contains("403"));
+    }
+
+    @Test
+    void protectCompletedMonthsNonSuccessBatchUpdateThrows() {
+        FakeHttp http = SheetsTestSupport.fakeHttp();
+        SheetsTestSupport.stubProtectionMetadata(http,
+                "{\"sheets\":[{\"properties\":{\"sheetId\":11,\"title\":\"Octubre 2026\"}}]}");
+        http.stub("/sheet-1:batchUpdate", 500, "{\"error\":{\"message\":\"boom\"}}");
+        GoogleSheetsClient client = client(http);
+
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
+                () -> client.protectCompletedMonths(YearMonth.of(2026, 11)));
+        assertTrue(error.getMessage().contains("protect month failed"));
+        assertTrue(error.getMessage().contains("500"));
+        assertTrue(http.requests.stream().anyMatch(r -> r.url().contains(":batchUpdate")));
+    }
+
 }

@@ -48,7 +48,8 @@ import java.util.Set;
  * ({@code Tab | TransactionId}): ids are read once per client instance and a
  * transaction id is recorded there only after its visible row was appended
  * successfully, so a failed ledger append may duplicate rows on a later run but
- * never loses them.
+ * never loses them. Completed month tabs are warning-protected on demand
+ * ({@link #protectCompletedMonths}); current and future tabs are left editable.
  */
 public final class GoogleSheetsClient {
 
@@ -68,6 +69,10 @@ public final class GoogleSheetsClient {
     private static final List<Object> HEADER_VALUES =
             List.<Object>of("Fecha", "Importe", "Descripción", "Cuenta");
     private static final Gson GSON = new Gson();
+    /** Fields expression for the protection pass: sheet ids, titles, and existing protected ranges. */
+    private static final String PROTECTION_FIELDS = "?fields=sheets(properties(sheetId,title),protectedRanges)";
+    /** Description set on every warning-only protection added to a completed month tab. */
+    private static final String PROTECTION_DESCRIPTION = "Mes cerrado: aviso antes de editar";
     /** Spanish month names for tab titles; index 0 = January. Locale-independent by design. */
     private static final List<String> SPANISH_MONTHS = List.of(
             "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -211,6 +216,83 @@ public final class GoogleSheetsClient {
                 body.toString());
         requireOk(response, "add sheet");
         sheetTitles.add(title);
+    }
+
+    /**
+     * Adds warning-only whole-sheet protection to every completed month tab
+     * (title parses as a Spanish month + year strictly before {@code currentMonth})
+     * that has no protection yet; current and future month tabs are left
+     * editable. Returns the number of protections added in this call; a tab
+     * with any existing {@code protectedRanges} entry is skipped, so repeated
+     * calls never duplicate a protection.
+     */
+    public int protectCompletedMonths(YearMonth currentMonth) {
+        String token = accessToken();
+        Response response = http.exchange("GET",
+                API_BASE + "/" + config.spreadsheetId() + PROTECTION_FIELDS,
+                Map.of("Authorization", "Bearer " + token), null);
+        requireOk(response, "metadata");
+        JsonObject spreadsheet = JsonSupport.parseObject(response.body());
+        JsonArray requests = new JsonArray();
+        if (spreadsheet.has("sheets")) {
+            for (JsonElement sheet : spreadsheet.getAsJsonArray("sheets")) {
+                JsonObject properties = sheet.getAsJsonObject().getAsJsonObject("properties");
+                if (properties == null) {
+                    continue;
+                }
+                int sheetId = properties.get("sheetId").getAsInt();
+                YearMonth month = parseTabTitle(JsonSupport.stringOrEmpty(properties, "title"));
+                if (month == null || !month.isBefore(currentMonth)) {
+                    continue;
+                }
+                JsonArray protectedRanges = sheet.getAsJsonObject().getAsJsonArray("protectedRanges");
+                if (protectedRanges != null && !protectedRanges.isEmpty()) {
+                    continue;
+                }
+                JsonObject range = new JsonObject();
+                range.addProperty("sheetId", sheetId);
+                JsonObject protectedRange = new JsonObject();
+                protectedRange.addProperty("description", PROTECTION_DESCRIPTION);
+                protectedRange.addProperty("warningOnly", true);
+                protectedRange.add("range", range);
+                JsonObject addProtectedRange = new JsonObject();
+                addProtectedRange.add("protectedRange", protectedRange);
+                JsonObject wrapper = new JsonObject();
+                wrapper.add("addProtectedRange", addProtectedRange);
+                requests.add(wrapper);
+            }
+        }
+        if (requests.isEmpty()) {
+            return 0;
+        }
+        JsonObject body = new JsonObject();
+        body.add("requests", requests);
+        Response update = http.exchange("POST",
+                API_BASE + "/" + config.spreadsheetId() + ":batchUpdate",
+                Map.of("Authorization", "Bearer " + token, "Content-Type", "application/json"),
+                body.toString());
+        requireOk(update, "protect month");
+        return requests.size();
+    }
+
+    /**
+     * Parses a tab title as {@code <Spanish month> <four-digit year>}; returns
+     * {@code null} for anything else (non-month tabs, malformed titles).
+     */
+    private static YearMonth parseTabTitle(String title) {
+        int space = title.lastIndexOf(' ');
+        if (space <= 0 || space == title.length() - 1) {
+            return null;
+        }
+        String year = title.substring(space + 1);
+        if (year.length() != 4 || !year.chars().allMatch(Character::isDigit)) {
+            return null;
+        }
+        int monthIndex = SPANISH_MONTHS.indexOf(title.substring(0, space));
+        if (monthIndex < 0) {
+            return null;
+        }
+        return YearMonth.of(Integer.parseInt(year), monthIndex + 1);
     }
 
     /** Ensures the hidden {@code _sync} ledger tab exists, writing its header row when created. */

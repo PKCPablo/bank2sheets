@@ -65,6 +65,15 @@ public final class SheetsTestSupport {
         http.stub("/sheet-1?fields=sheets.properties.title", json.toString());
     }
 
+    /** Metadata path for the protection pass: sheet ids, titles, and existing protected ranges. */
+    public static final String PROTECTION_METADATA_PATH =
+            "/sheet-1?fields=sheets(properties(sheetId,title),protectedRanges)";
+
+    /** Stubs the protection-pass metadata response with the given raw body. */
+    public static void stubProtectionMetadata(FakeHttp http, String json) {
+        http.stub(PROTECTION_METADATA_PATH, json);
+    }
+
     /** Stubs the hidden _sync ledger read range with the given raw body. */
     public static void stubLedgerRead(FakeHttp http, String dataJson) {
         http.stub("/sheet-1/values/'_sync'!A:B", dataJson);
