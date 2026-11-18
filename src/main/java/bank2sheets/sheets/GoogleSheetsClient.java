@@ -36,15 +36,21 @@ import java.util.Set;
  *
  * <p>Target layout: one tab per month titled with the Spanish month name and
  * year (e.g. {@code Noviembre 2026}), columns A..D:
- * {@code Fecha, Importe, Descripción, Cuenta}. Rows are
- * appended with {@code valueInputOption=RAW}, so amounts sent as JSON numbers
- * become numeric cells and descriptive text stays literal (no date/formula
- * parsing; {@code Fecha} stays literal {@code DD/MM/YYYY} text); each append
+ * {@code Fecha, Importe, Descripción, Cuenta}. The visible row append uses
+ * {@code valueInputOption=USER_ENTERED}: {@code Fecha} is sent as ISO
+ * {@code yyyy-MM-dd} and parsed into a date-typed cell (display follows the
+ * spreadsheet locale), while {@code Descripción}/{@code Cuenta} are
+ * apostrophe-escaped by {@link SheetRow} so formula-like or number/date-like
+ * text stays literal; amounts sent as JSON numbers become numeric cells (non-string
+ * JSON values are not parsed even under {@code USER_ENTERED}). Each append
  * batch is sorted by {@code Fecha} ascending (stable, so same-date rows keep
- * provider order). The header row is written once per tab when missing; a tab
- * whose existing header does not match the four expected cells (e.g. a legacy
- * six-column tab) fails fast with a reset instruction instead of being
- * migrated. Dedupe uses a hidden {@code _sync} helper tab
+ * provider order). The header row is written once per tab when missing, with
+ * {@code valueInputOption=RAW}; a tab whose existing header does not match the
+ * four expected cells (e.g. a legacy six-column tab) fails fast with a reset
+ * instruction instead of being migrated. Existing rows written by older
+ * versions as {@code DD/MM/YYYY} text stay text: the only existing-row read is
+ * the {@code A1:D1} header check, so mixed tabs are accepted. Dedupe uses a
+ * hidden {@code _sync} helper tab
  * ({@code Tab | TransactionId}): ids are read once per client instance and a
  * transaction id is recorded there only after its visible row was appended
  * successfully, so a failed ledger append may duplicate rows on a later run but
@@ -58,7 +64,9 @@ public final class GoogleSheetsClient {
     private static final String SCOPE = "https://www.googleapis.com/auth/spreadsheets";
     private static final String RANGE_SUFFIX = "!A1:D";
     private static final String HEADER_RANGE_SUFFIX = "!A1:D1";
-    private static final String VALUE_INPUT_OPTION = "RAW";
+    private static final String RAW = "RAW";
+    /** Visible rows: USER_ENTERED parses the ISO Fecha into a date cell; escaped text stays literal. */
+    private static final String USER_ENTERED = "USER_ENTERED";
     /** Hidden helper tab that records appended transaction ids for dedupe. */
     private static final String HELPER_TITLE = "_sync";
     /** Header row of the helper tab; data starts at row 2. */
@@ -116,13 +124,21 @@ public final class GoogleSheetsClient {
     /**
      * Appends the given rows to the month tab in one batch after the header,
      * sorted by {@code Fecha} ascending (stable sort: same-date rows keep input
-     * order; the caller's list is not mutated). When the tab has no header yet,
-     * the header row is written first so a fresh tab gets the expected columns.
+     * order; the caller's list is not mutated). The visible rows are appended
+     * with {@code valueInputOption=USER_ENTERED}: {@code Fecha} is sent as ISO
+     * {@code yyyy-MM-dd} and parsed into a date-typed cell, while
+     * {@code Descripción}/{@code Cuenta} are apostrophe-escaped by
+     * {@link SheetRow} so formula-like or number/date-like text stays literal.
+     * When the tab has no header yet, the header row is written first with
+     * {@code valueInputOption=RAW} so a fresh tab gets the expected columns.
      * A tab whose existing header does not match the four expected cells (e.g.
      * a legacy six-column tab) fails fast with a reset instruction; nothing is
-     * appended to it. Empty input does nothing (no HTTP calls). After the
-     * visible append succeeds, one {@code [Tab, TransactionId]} pair per row is
-     * appended to the hidden {@code _sync} ledger and only then added to the
+     * appended to it. Existing rows written by older versions as
+     * {@code DD/MM/YYYY} text stay text: the only existing-row read is the
+     * {@code A1:D1} header check, so mixed tabs are accepted. Empty input does
+     * nothing (no HTTP calls). After the visible append succeeds, one
+     * {@code [Tab, TransactionId]} pair per row is appended to the hidden
+     * {@code _sync} ledger (also {@code RAW}) and only then added to the
      * in-memory cache; a failed ledger append throws before the cache is
      * updated.
      */
@@ -137,7 +153,8 @@ public final class GoogleSheetsClient {
         String token = accessToken();
         JsonArray headerRow = readHeaderRow(token, sheetPrefix + HEADER_RANGE_SUFFIX);
         if (headerRow == null) {
-            appendValues(token, sheetPrefix + RANGE_SUFFIX, toValuesJson(List.of(HEADER_VALUES)));
+            appendValues(token, sheetPrefix + RANGE_SUFFIX, RAW,
+                    toValuesJson(List.of(HEADER_VALUES)));
         } else {
             for (int i = 0; i < HEADER_VALUES.size(); i++) {
                 if (!HEADER_VALUES.get(i).equals(stringAt(headerRow, i))) {
@@ -150,9 +167,9 @@ public final class GoogleSheetsClient {
         List<SheetRow> sorted = rows.stream()
                 .sorted(Comparator.comparing(SheetRow::fecha))
                 .toList();
-        appendValues(token, sheetPrefix + RANGE_SUFFIX,
+        appendValues(token, sheetPrefix + RANGE_SUFFIX, USER_ENTERED,
                 toValuesJson(sorted.stream().map(SheetRow::values).toList()));
-        appendValues(token, quoted(HELPER_TITLE) + HELPER_APPEND_RANGE_SUFFIX,
+        appendValues(token, quoted(HELPER_TITLE) + HELPER_APPEND_RANGE_SUFFIX, RAW,
                 toValuesJson(sorted.stream()
                         .map(row -> List.<Object>of(sheet, row.transactionId()))
                         .toList()));
@@ -300,7 +317,7 @@ public final class GoogleSheetsClient {
         ensureSheetTitles();
         if (!sheetTitles.contains(HELPER_TITLE)) {
             createSheet(HELPER_TITLE, true);
-            appendValues(accessToken(), quoted(HELPER_TITLE) + "!A1:B",
+            appendValues(accessToken(), quoted(HELPER_TITLE) + "!A1:B", RAW,
                     toValuesJson(List.of(HELPER_HEADER)));
         }
     }
@@ -431,8 +448,8 @@ public final class GoogleSheetsClient {
         return JsonSupport.parseObject(response.body());
     }
 
-    private void appendValues(String token, String range, String body) {
-        Response response = http.exchange("POST", appendUrl(range),
+    private void appendValues(String token, String range, String valueInputOption, String body) {
+        Response response = http.exchange("POST", appendUrl(range, valueInputOption),
                 Map.of("Authorization", "Bearer " + token, "Content-Type", "application/json"), body);
         requireOk(response, "append");
     }
@@ -444,8 +461,8 @@ public final class GoogleSheetsClient {
         return API_BASE + "/" + config.spreadsheetId() + "/values/" + range;
     }
 
-    private String appendUrl(String range) {
-        return valuesUrl(range) + ":append?valueInputOption=" + VALUE_INPUT_OPTION;
+    private String appendUrl(String range, String valueInputOption) {
+        return valuesUrl(range) + ":append?valueInputOption=" + valueInputOption;
     }
 
     /** Quotes a tab title for use in an A1 range: {@code 'Agosto%202026'!A1:D}. */

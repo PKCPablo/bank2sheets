@@ -137,6 +137,7 @@ class GoogleSheetsClientTest {
     void appendRowsWritesHeaderThenDataWithAmountsAsNumbers() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
         SheetsTestSupport.stubExistingMonth(http, "Agosto 2026", "{}");
+        http.stub("/sheet-1/values/'Agosto%202026'!A1:D:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
         http.stub("/sheet-1/values/'_sync'!A2:B:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
         GoogleSheetsClient client = client(http);
 
@@ -153,16 +154,39 @@ class GoogleSheetsClientTest {
                 headerAppend.body());
 
         FakeHttp.Request dataAppend = http.requests.get(5);
+        assertTrue(dataAppend.url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=USER_ENTERED"));
         String body = dataAppend.body();
         assertFalse(body.contains("\"1200.50\""));
         JsonArray values = JsonParser.parseString(body).getAsJsonObject().getAsJsonArray("values");
         assertEquals(2, values.size());
         JsonArray first = values.get(0).getAsJsonArray();
-        assertEquals("01/08/2026", first.get(0).getAsString());
+        assertEquals("2026-08-01", first.get(0).getAsString());
         assertEquals(new BigDecimal("1200.50"), first.get(1).getAsBigDecimal());
-        assertEquals("Nomina", first.get(2).getAsString());
-        assertEquals("Cuenta Principal", first.get(3).getAsString());
+        assertEquals("'Nomina", first.get(2).getAsString());
+        assertEquals("'Cuenta Principal", first.get(3).getAsString());
         assertEquals(new BigDecimal("-3.20"), values.get(1).getAsJsonArray().get(1).getAsBigDecimal());
+    }
+
+    @Test
+    void appendRowsEscapesTextColumnsAsLiteralText() {
+        FakeHttp http = SheetsTestSupport.fakeHttp();
+        SheetsTestSupport.stubExistingMonth(http, "Agosto 2026", SheetsTestSupport.HEADER_JSON);
+        http.stub("/sheet-1/values/'_sync'!A2:B:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
+        GoogleSheetsClient client = client(http);
+
+        client.appendRows(YearMonth.of(2026, 8), List.of(
+                new SheetRow(LocalDate.of(2026, 8, 1), new BigDecimal("100"), "=SUM(A1:A2)", "2-3-4", "t1")));
+
+        FakeHttp.Request dataAppend = http.requests.stream()
+                .filter(r -> "POST".equals(r.method())
+                        && r.url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=USER_ENTERED"))
+                .findFirst().orElseThrow();
+        JsonArray first = JsonParser.parseString(dataAppend.body()).getAsJsonObject()
+                .getAsJsonArray("values").get(0).getAsJsonArray();
+        assertEquals("2026-08-01", first.get(0).getAsString());
+        assertEquals(new BigDecimal("100"), first.get(1).getAsBigDecimal());
+        assertEquals("'=SUM(A1:A2)", first.get(2).getAsString());
+        assertEquals("'2-3-4", first.get(3).getAsString());
     }
 
     @Test
@@ -179,7 +203,7 @@ class GoogleSheetsClientTest {
         // requests: 0=token, 1=metadata, 2=ledger read, 3=header read, 4=visible append, 5=ledger append
         assertEquals(6, http.requests.size());
         FakeHttp.Request visibleAppend = http.requests.get(4);
-        assertTrue(visibleAppend.url().endsWith("/values/'Agosto%202026'!A1:D:append?valueInputOption=RAW"));
+        assertTrue(visibleAppend.url().endsWith("/values/'Agosto%202026'!A1:D:append?valueInputOption=USER_ENTERED"));
         FakeHttp.Request ledgerAppend = http.requests.get(5);
         assertEquals("https://sheets.googleapis.com/v4/spreadsheets/sheet-1/values/'_sync'!A2:B:append?valueInputOption=RAW",
                 ledgerAppend.url());
@@ -201,7 +225,7 @@ class GoogleSheetsClientTest {
         assertTrue(error.getMessage().contains("500"));
         // The visible row was appended before the ledger append failed.
         assertTrue(http.requests.stream().anyMatch(r ->
-                r.url().endsWith("/values/'Agosto%202026'!A1:D:append?valueInputOption=RAW")));
+                r.url().endsWith("/values/'Agosto%202026'!A1:D:append?valueInputOption=USER_ENTERED")));
     }
 
     @Test
@@ -216,11 +240,11 @@ class GoogleSheetsClientTest {
                 new SheetRow(LocalDate.of(2026, 8, 2), new BigDecimal("20"), "Temprano", "Cuenta Principal", "t-early")));
 
         FakeHttp.Request dataAppend = http.requests.stream()
-                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=RAW"))
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=USER_ENTERED"))
                 .findFirst().orElseThrow();
         JsonArray values = JsonParser.parseString(dataAppend.body()).getAsJsonObject().getAsJsonArray("values");
-        assertEquals("02/08/2026", values.get(0).getAsJsonArray().get(0).getAsString());
-        assertEquals("15/08/2026", values.get(1).getAsJsonArray().get(0).getAsString());
+        assertEquals("2026-08-02", values.get(0).getAsJsonArray().get(0).getAsString());
+        assertEquals("2026-08-15", values.get(1).getAsJsonArray().get(0).getAsString());
     }
 
     @Test
@@ -237,7 +261,7 @@ class GoogleSheetsClientTest {
         assertEquals(6, http.requests.size());
         // token, visible data append, ledger append
         assertEquals(3, http.requests.stream().filter(r -> "POST".equals(r.method())).count());
-        assertTrue(http.requests.get(4).url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=RAW"));
+        assertTrue(http.requests.get(4).url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=USER_ENTERED"));
         assertTrue(http.requests.stream().noneMatch(r -> "PUT".equals(r.method())));
     }
 
@@ -259,7 +283,7 @@ class GoogleSheetsClientTest {
         assertTrue(error.getMessage().contains("_sync"));
         // Nothing was appended to the legacy tab.
         assertTrue(http.requests.stream().noneMatch(r ->
-                r.url().endsWith("/values/'Agosto%202026'!A1:D:append?valueInputOption=RAW")));
+                r.url().endsWith("/values/'Agosto%202026'!A1:D:append?valueInputOption=USER_ENTERED")));
     }
 
     @Test
@@ -354,8 +378,8 @@ class GoogleSheetsClientTest {
         http.stub("/sheet-1?fields=sheets.properties.title",
                 "{\"sheets\":[{\"properties\":{\"title\":\"Agosto 2026\"}},"
                         + "{\"properties\":{\"title\":\"_sync\"}}]}");
-        http.stub("/sheet-1/values/'Agosto%202026'!A1:D1", "{}");
-        http.stub("/sheet-1/values/'Agosto%202026'!A1:D:append?valueInputOption=RAW", 500, "{\"error\":{\"message\":\"boom\"}}");
+        http.stub("/sheet-1/values/'Agosto%202026'!A1:D1", SheetsTestSupport.HEADER_JSON);
+        http.stub("/sheet-1/values/'Agosto%202026'!A1:D:append?valueInputOption=USER_ENTERED", 500, "{\"error\":{\"message\":\"boom\"}}");
         http.stub("/sheet-1/values/'_sync'!A:B", "{}");
         GoogleSheetsClient client = client(http);
 

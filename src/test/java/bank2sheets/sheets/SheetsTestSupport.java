@@ -88,7 +88,7 @@ public final class SheetsTestSupport {
         stubLedgerRead(http, "{}");
         String encoded = title.replace(" ", "%20");
         http.stub("/sheet-1/values/'" + encoded + "'!A1:D1", headerJson);
-        http.stub("/sheet-1/values/'" + encoded + "'!A1:D:append?valueInputOption=RAW",
+        http.stub("/sheet-1/values/'" + encoded + "'!A1:D:append?valueInputOption=USER_ENTERED",
                 "{\"spreadsheetId\":\"sheet-1\"}");
     }
 }

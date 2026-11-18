@@ -156,11 +156,11 @@ class MainCommandsTest {
         assertEquals(0, first.exitCode());
         assertTrue(first.stdout().contains("appended 1 new row(s)"));
         String appendBody = sheets.requests.stream()
-                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=RAW"))
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=USER_ENTERED"))
                 .findFirst().orElseThrow().body();
-        assertEquals("Cuenta Nominas", JsonParser.parseString(appendBody).getAsJsonObject()
+        assertEquals("'Cuenta Nominas", JsonParser.parseString(appendBody).getAsJsonObject()
                 .getAsJsonArray("values").get(0).getAsJsonArray().get(3).getAsString());
-        assertEquals("01/08/2026", JsonParser.parseString(appendBody).getAsJsonObject()
+        assertEquals("2026-08-01", JsonParser.parseString(appendBody).getAsJsonObject()
                 .getAsJsonArray("values").get(0).getAsJsonArray().get(0).getAsString());
 
         // Mark the appended TransactionId as already present in the ledger, then sync again.
@@ -206,13 +206,13 @@ class MainCommandsTest {
         assertEquals(0, first.exitCode());
         assertTrue(first.stdout().contains("appended 2 new row(s)"));
         List<String> appendBodies = sheets.requests.stream()
-                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=RAW"))
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=USER_ENTERED"))
                 .map(r -> r.body()).toList();
         JsonArray values = JsonParser.parseString(appendBodies.get(0)).getAsJsonObject()
                 .getAsJsonArray("values");
         assertEquals(2, values.size());
-        assertEquals("Cuenta Nominas", values.get(0).getAsJsonArray().get(3).getAsString());
-        assertEquals("Cuenta Ahorro", values.get(1).getAsJsonArray().get(3).getAsString());
+        assertEquals("'Cuenta Nominas", values.get(0).getAsJsonArray().get(3).getAsString());
+        assertEquals("'Cuenta Ahorro", values.get(1).getAsJsonArray().get(3).getAsString());
 
         // Mark both appended TransactionIds as already present in the ledger, then sync again.
         String ledgerBody = sheets.requests.stream()
@@ -246,9 +246,9 @@ class MainCommandsTest {
 
         assertEquals(0, result.exitCode());
         String appendBody = sheets.requests.stream()
-                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=RAW"))
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=USER_ENTERED"))
                 .findFirst().orElseThrow().body();
-        assertEquals("uuid-1", JsonParser.parseString(appendBody).getAsJsonObject()
+        assertEquals("'uuid-1", JsonParser.parseString(appendBody).getAsJsonObject()
                 .getAsJsonArray("values").get(0).getAsJsonArray().get(3).getAsString());
     }
 
@@ -269,9 +269,9 @@ class MainCommandsTest {
 
         assertEquals(0, result.exitCode());
         String appendBody = sheets.requests.stream()
-                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=RAW"))
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=USER_ENTERED"))
                 .findFirst().orElseThrow().body();
-        assertEquals("Cuenta Nóminas", JsonParser.parseString(appendBody).getAsJsonObject()
+        assertEquals("'Cuenta Nóminas", JsonParser.parseString(appendBody).getAsJsonObject()
                 .getAsJsonArray("values").get(0).getAsJsonArray().get(3).getAsString());
         assertTrue(http.requests.stream()
                 .noneMatch(r -> r.url().endsWith("/details") || r.url().endsWith("/sessions")));
@@ -322,11 +322,11 @@ class MainCommandsTest {
 
         // Two quoted appends; each contains exactly the row whose Fecha matches its tab.
         List<FakeHttp.Request> appends = sheets.requests.stream()
-                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("!A1:D:append?valueInputOption=RAW"))
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("!A1:D:append?valueInputOption=USER_ENTERED"))
                 .toList();
         assertEquals(2, appends.size());
         for (FakeHttp.Request append : appends) {
-            String expectedFecha = append.url().contains("'Julio%202026'!") ? "31/07/2026" : "01/08/2026";
+            String expectedFecha = append.url().contains("'Julio%202026'!") ? "2026-07-31" : "2026-08-01";
             JsonArray rows = JsonParser.parseString(append.body()).getAsJsonObject().getAsJsonArray("values");
             assertEquals(1, rows.size());
             assertEquals(expectedFecha, rows.get(0).getAsJsonArray().get(0).getAsString());
@@ -380,14 +380,14 @@ class MainCommandsTest {
 
         assertEquals(0, result.exitCode());
         List<FakeHttp.Request> appends = sheets.requests.stream()
-                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=RAW"))
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=USER_ENTERED"))
                 .toList();
         assertEquals(1, appends.size());
         JsonArray rows = JsonParser.parseString(appends.get(0).body()).getAsJsonObject()
                 .getAsJsonArray("values");
         assertEquals(2, rows.size());
-        assertEquals("03/08/2026", rows.get(0).getAsJsonArray().get(0).getAsString());
-        assertEquals("20/08/2026", rows.get(1).getAsJsonArray().get(0).getAsString());
+        assertEquals("2026-08-03", rows.get(0).getAsJsonArray().get(0).getAsString());
+        assertEquals("2026-08-20", rows.get(1).getAsJsonArray().get(0).getAsString());
     }
 
     @Test
@@ -409,7 +409,7 @@ class MainCommandsTest {
         assertTrue(first.stdout().contains("appended 1 new row(s)"));
         String appendBody = sheets.requests.stream()
                 .filter(r -> "POST".equals(r.method())
-                        && r.url().endsWith("/values/'Agosto%202026'!A1:D:append?valueInputOption=RAW"))
+                        && r.url().endsWith("/values/'Agosto%202026'!A1:D:append?valueInputOption=USER_ENTERED"))
                 .findFirst().orElseThrow().body();
         String ledgerBody = sheets.requests.stream()
                 .filter(r -> "POST".equals(r.method())
@@ -428,7 +428,7 @@ class MainCommandsTest {
         assertEquals(0, second.exitCode());
         assertTrue(second.stdout().contains("appended 0 new row(s), skipped 1 duplicate(s)"));
         assertTrue(sheets.requests.stream().skip(requestsAfterRun1)
-                .noneMatch(r -> r.url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=RAW")));
+                .noneMatch(r -> r.url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=USER_ENTERED")));
     }
 
     @Test
@@ -472,7 +472,7 @@ class MainCommandsTest {
         int appendIndex = sheets.requests.stream()
                 .collect(java.util.stream.Collectors.toList())
                 .indexOf(sheets.requests.stream()
-                        .filter(r -> r.url().endsWith("'Octubre%202026'!A1:D:append?valueInputOption=RAW"))
+                        .filter(r -> r.url().endsWith("'Octubre%202026'!A1:D:append?valueInputOption=USER_ENTERED"))
                         .findFirst().orElseThrow());
         assertTrue(sheets.requests.indexOf(protectionUpdates.get(0)) > appendIndex);
     }
@@ -712,7 +712,7 @@ class MainCommandsTest {
         String encoded = title.replace(" ", "%20");
         sheets.stub("/sheet-1/values/'" + encoded + "'!A1:D1", SheetsTestSupport.HEADER_JSON);
         stubLedger(sheets, "{}");
-        sheets.stub("/sheet-1/values/'" + encoded + "'!A1:D:append?valueInputOption=RAW",
+        sheets.stub("/sheet-1/values/'" + encoded + "'!A1:D:append?valueInputOption=USER_ENTERED",
                 "{\"spreadsheetId\":\"sheet-1\"}");
     }
 
