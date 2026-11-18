@@ -277,7 +277,7 @@ class GoogleSheetsClientTest {
                 () -> client.appendRows(YearMonth.of(2026, 8), List.of(
                         new SheetRow(LocalDate.of(2026, 8, 1), new BigDecimal("100"), "Nomina", "Ahorro", "t1"))));
         assertTrue(error.getMessage().contains("Fecha"));
-        assertTrue(error.getMessage().contains("Importe"));
+        assertTrue(error.getMessage().contains("Movimientos"));
         assertTrue(error.getMessage().contains("Descripción"));
         assertTrue(error.getMessage().contains("Cuenta"));
         assertTrue(error.getMessage().contains("_sync"));

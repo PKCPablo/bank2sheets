@@ -36,7 +36,7 @@ import java.util.Set;
  *
  * <p>Target layout: one tab per month titled with the Spanish month name and
  * year (e.g. {@code Noviembre 2026}), columns A..D:
- * {@code Fecha, Importe, Descripción, Cuenta}. The visible row append uses
+ * {@code Fecha, Movimientos, Descripción, Cuenta}. The visible row append uses
  * {@code valueInputOption=USER_ENTERED}: {@code Fecha} is sent as ISO
  * {@code yyyy-MM-dd} and parsed into a date-typed cell (display follows the
  * spreadsheet locale), while {@code Descripción}/{@code Cuenta} are
@@ -75,7 +75,7 @@ public final class GoogleSheetsClient {
     private static final String HELPER_APPEND_RANGE_SUFFIX = "!A2:B";
     /** Header row; order must match {@link SheetRow#values()} (columns A..D). */
     private static final List<Object> HEADER_VALUES =
-            List.<Object>of("Fecha", "Importe", "Descripción", "Cuenta");
+            List.<Object>of("Fecha", "Movimientos", "Descripción", "Cuenta");
     private static final Gson GSON = new Gson();
     /** Fields expression for the protection pass: sheet ids, titles, and existing protected ranges. */
     private static final String PROTECTION_FIELDS = "?fields=sheets(properties(sheetId,title),protectedRanges)";

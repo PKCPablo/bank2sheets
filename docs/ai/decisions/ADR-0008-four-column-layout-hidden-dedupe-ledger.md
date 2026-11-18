@@ -1,6 +1,6 @@
 # ADR-0008: Four-column month tabs with DD/MM/YYYY dates and a hidden `_sync` dedupe ledger
 
-- Status: accepted (superseded in part by the Amendment (2026-11-18) at the end of this document)
+- Status: accepted (superseded in part by the dated Amendments (2026-11-18) at the end of this document)
 - Date: 2026-11-16
 
 ## Context
@@ -55,3 +55,11 @@ Implemented by `plans/2026-11-18_182437-date-typed-fecha-cells.md` (GitHub issue
 The new append contract: the visible month-row append uses `valueInputOption=USER_ENTERED` with `Fecha` sent as an ISO `yyyy-MM-dd` string, which Sheets parses into a date-typed cell whose display follows the spreadsheet locale (no number format or locale is set in code); `Descripción`/`Cuenta` are prefixed with one leading apostrophe (literal-text escape, not displayed); `Importe` remains a JSON number. The header row and both `_sync` appends (header and data) keep `valueInputOption=RAW`. `SheetRow` owns the cell representation; `GoogleSheetsClient` selects the option per append.
 
 Unchanged and still in force: the append-only writer, the four-column layout, the hidden `_sync` ledger and its append order, the legacy six-column header rejection, and the six-column/`RAW`-era reset guidance. Existing rows written as `DD/MM/YYYY` text by older versions are **not** migrated or rewritten; mixed tabs (text-date rows above typed-date rows) are accepted, and a manual reset remains optional for the owner. The original Validation section's `DD/MM/YYYY` smoke expectation is superseded by the typed-cell human validation in the plan (typed `Fecha` cell, `=ISNUMBER` true, literal `=`-prefixed descriptions, mixed tab not rejected, second run appends 0). The title's `DD/MM/YYYY dates` wording is historical and intentionally unchanged.
+
+## Amendment (2026-11-18) — visible `Importe` column renamed to `Movimientos`
+
+Implemented by `plans/2026-11-18_210831-rename-importe-column-to-movimientos.md` (GitHub issue #20). This amendment supersedes the column name in Decision bullet 1 (`Fecha`, `Importe`, `Descripción`, `Cuenta` → `Fecha`, `Movimientos`, `Descripción`, `Cuenta`) and the amount-column name in the Amendment (2026-11-18) above (`Importe` remains a JSON number → `Movimientos` remains a JSON number); the original text is kept unchanged as history.
+
+Header matching now expects `Movimientos` as the second cell: a tab with no header receives the `Fecha, Movimientos, Descripción, Cuenta` header under `RAW`, and a tab whose header matches appends normally. **No legacy alias exists**: a tab whose second cell is `Importe` is rejected by the existing fail-fast guard with the reset instruction (delete/archive the tab and `_sync`, or use a fresh spreadsheet); no migration code, CLI flag, or option was added. The `SheetRow` record component stays `importe` (internal, not user-visible) and the numeric semantics are unchanged: the amount is still serialized as a JSON number under the new column name.
+
+Scoping of the first 2026-11-18 amendment: its clauses "mixed tabs are accepted" and "a manual reset remains optional" now apply only to tabs that already carry the `Movimientos` header. For pre-rename tabs whose second cell is `Importe`, the reset is required: the header guard rejects them before any row is inspected, and the owner deletes/archives the tab (and `_sync`, or uses a fresh spreadsheet).

@@ -50,7 +50,7 @@ public final class SheetsTestSupport {
 
     /** Header row body shared by the Sheets and Main sync tests. */
     public static final String HEADER_JSON =
-            "{\"values\":[[\"Fecha\",\"Importe\",\"Descripci\u00f3n\",\"Cuenta\"]]}";
+            "{\"values\":[[\"Fecha\",\"Movimientos\",\"Descripci\u00f3n\",\"Cuenta\"]]}";
 
     /** Stubs the spreadsheet metadata response with the given tab titles. */
     public static void stubSheetTitles(FakeHttp http, String... titles) {

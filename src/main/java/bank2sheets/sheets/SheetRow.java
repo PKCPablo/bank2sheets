@@ -7,9 +7,9 @@ import java.util.List;
 
 /**
  * One spreadsheet row to append, in the fixed column order
- * Fecha, Importe, Descripción, Cuenta.
+ * Fecha, Movimientos, Descripción, Cuenta.
  *
- * <p>Importe keeps full precision as {@link BigDecimal} and is serialized as a
+ * <p>The amount (visible column `Movimientos`) keeps full precision as {@link BigDecimal} and is serialized as a
  * JSON number (a numeric cell), never as a string. Fecha is formatted as ISO
  * {@code yyyy-MM-dd} at write time; the visible row append uses
  * {@code valueInputOption=USER_ENTERED}, so Sheets parses it into a date-typed
