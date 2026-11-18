@@ -14,12 +14,15 @@ import bank2sheets.openbanking.enablebanking.EnableBankingClient;
 import bank2sheets.sheets.GoogleSheetsClient;
 import bank2sheets.sheets.SheetsTestSupport;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
+import java.time.YearMonth;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -429,6 +432,85 @@ class MainCommandsTest {
     }
 
     @Test
+    void enableBankingSyncProtectsClosedMonthsAfterAppend() throws IOException {
+        FakeHttp http = new FakeHttp(EB_BASE);
+        stubSession(http, "[\"uuid-1\"]");
+        stubAccountDetails(http, "uuid-1", "Cuenta Nominas");
+        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", """
+                {"transactions": [
+                  {"entry_reference": "ref-1", "credit_debit_indicator": "CRDT",
+                   "transaction_amount": {"amount": "1200.50", "currency": "EUR"},
+                   "remittance_information": ["Nomina"],
+                   "booking_date": "2026-10-15"}
+                ]}
+                """);
+        FakeHttp sheets = SheetsTestSupport.fakeHttp();
+        stubSpreadsheetTitles(sheets, "Octubre 2026", "_sync");
+        stubMonthSheet(sheets, "Octubre 2026");
+        SheetsTestSupport.stubProtectionMetadata(sheets,
+                "{\"sheets\":[{\"properties\":{\"sheetId\":7,\"title\":\"Octubre 2026\"}}]}");
+        Path stateFile = sessionState();
+        AppConfig cfg = enableBankingConfig("sess-eb-1");
+        Main main = new Main(c -> enableBankingClient(c, http), () -> cfg,
+                () -> new GoogleSheetsClient(SheetsTestSupport.config(), sheets), stateFile, () -> { },
+                () -> YearMonth.of(2026, 11));
+
+        Result result = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
+
+        assertEquals(0, result.exitCode());
+        assertTrue(result.stdout().contains("protected 1 closed month tab(s)"));
+        List<FakeHttp.Request> protectionUpdates = sheets.requests.stream()
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("/sheet-1:batchUpdate")
+                        && r.body().contains("addProtectedRange"))
+                .toList();
+        assertEquals(1, protectionUpdates.size());
+        JsonObject protectedRange = JsonParser.parseString(protectionUpdates.get(0).body()).getAsJsonObject()
+                .getAsJsonArray("requests").get(0).getAsJsonObject()
+                .getAsJsonObject("addProtectedRange").getAsJsonObject("protectedRange");
+        assertEquals(7, protectedRange.getAsJsonObject("range").get("sheetId").getAsInt());
+        assertTrue(protectedRange.get("warningOnly").getAsBoolean());
+        int appendIndex = sheets.requests.stream()
+                .collect(java.util.stream.Collectors.toList())
+                .indexOf(sheets.requests.stream()
+                        .filter(r -> r.url().endsWith("'Octubre%202026'!A1:D:append?valueInputOption=RAW"))
+                        .findFirst().orElseThrow());
+        assertTrue(sheets.requests.indexOf(protectionUpdates.get(0)) > appendIndex);
+    }
+
+    @Test
+    void syncLeavesCurrentMonthUnprotected() throws IOException {
+        FakeHttp http = new FakeHttp(EB_BASE);
+        stubSession(http, "[\"uuid-1\"]");
+        stubAccountDetails(http, "uuid-1", "Cuenta Nominas");
+        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", """
+                {"transactions": [
+                  {"entry_reference": "ref-1", "credit_debit_indicator": "CRDT",
+                   "transaction_amount": {"amount": "1200.50", "currency": "EUR"},
+                   "remittance_information": ["Nomina"],
+                   "booking_date": "2026-11-01"}
+                ]}
+                """);
+        FakeHttp sheets = SheetsTestSupport.fakeHttp();
+        stubSpreadsheetTitles(sheets, "Noviembre 2026", "_sync");
+        stubMonthSheet(sheets, "Noviembre 2026");
+        SheetsTestSupport.stubProtectionMetadata(sheets,
+                "{\"sheets\":[{\"properties\":{\"sheetId\":9,\"title\":\"Noviembre 2026\"}}]}");
+        Path stateFile = sessionState();
+        AppConfig cfg = enableBankingConfig("sess-eb-1");
+        Main main = new Main(c -> enableBankingClient(c, http), () -> cfg,
+                () -> new GoogleSheetsClient(SheetsTestSupport.config(), sheets), stateFile, () -> { },
+                () -> YearMonth.of(2026, 11));
+
+        Result result = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
+
+        assertEquals(0, result.exitCode(), result.stderr());
+        assertTrue(result.stdout().contains("protected 0 closed month tab(s)"));
+        assertTrue(sheets.requests.stream()
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("/sheet-1:batchUpdate"))
+                .noneMatch(r -> r.body().contains("addProtectedRange")));
+    }
+
+    @Test
     void enableBankingConnectWithoutCredentialsExitsNonZero() {
         FakeHttp http = new FakeHttp(EB_BASE);
         Path stateFile = tempDir.resolve("state.properties");
@@ -622,6 +704,7 @@ class MainCommandsTest {
     private static void stubSpreadsheetTitles(FakeHttp sheets, String... titles) {
         SheetsTestSupport.stubToken(sheets);
         SheetsTestSupport.stubSheetTitles(sheets, titles);
+        SheetsTestSupport.stubProtectionMetadata(sheets, "{}");
     }
 
     /** Stubs one existing month tab: header row, empty ledger, and a successful append. */

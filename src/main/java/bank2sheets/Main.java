@@ -63,6 +63,7 @@ public final class Main {
     private final Supplier<GoogleSheetsClient> sheets;
     private final RuntimeState state;
     private final Runnable waitForEnter;
+    private final Supplier<YearMonth> currentMonth;
 
     /**
      * @param sources factory for the provider client (tests inject a fake HTTP backend)
@@ -73,11 +74,21 @@ public final class Main {
      */
     Main(Function<AppConfig, TransactionSource> sources, Supplier<AppConfig> config, Supplier<GoogleSheetsClient> sheets,
             Path stateFile, Runnable waitForEnter) {
+        this(sources, config, sheets, stateFile, waitForEnter, YearMonth::now);
+    }
+
+    /**
+     * Same as above with an injectable current month, so tests can pin the
+     * month used by the post-append protection pass in {@code sync}.
+     */
+    Main(Function<AppConfig, TransactionSource> sources, Supplier<AppConfig> config, Supplier<GoogleSheetsClient> sheets,
+            Path stateFile, Runnable waitForEnter, Supplier<YearMonth> currentMonth) {
         this.sources = sources;
         this.config = config;
         this.sheets = sheets;
         this.state = new RuntimeState(stateFile);
         this.waitForEnter = waitForEnter;
+        this.currentMonth = currentMonth;
     }
 
     public static void main(String[] args) {
@@ -221,7 +232,9 @@ public final class Main {
      * month's new rows are appended in ascending {@code Fecha} order. Dedupe is
      * exact on the transaction id against the hidden {@code _sync} ledger (per
      * month tab), plus an in-run id set, so repeated runs append nothing new
-     * (idempotency). Exits 0 on success and 1 on missing configuration or
+     * (idempotency). After appending, a warning-only protection pass marks
+     * every closed month tab (see {@link GoogleSheetsClient#protectCompletedMonths}).
+     * Exits 0 on success and 1 on missing configuration or
      * provider/Sheets errors.
      */
     private int sync() {
@@ -264,8 +277,10 @@ public final class Main {
                     appended += fresh.size();
                 }
             }
+            int protectedMonths = sheetsClient.protectCompletedMonths(currentMonth.get());
             System.out.println("sync: fetched " + fetched + " transaction(s), appended " + appended
-                    + " new row(s), skipped " + (fetched - appended) + " duplicate(s)");
+                    + " new row(s), skipped " + (fetched - appended) + " duplicate(s), protected "
+                    + protectedMonths + " closed month tab(s)");
             return 0;
         } catch (Bank2SheetsException | IllegalStateException e) {
             System.err.println("sync: " + e.getMessage());
