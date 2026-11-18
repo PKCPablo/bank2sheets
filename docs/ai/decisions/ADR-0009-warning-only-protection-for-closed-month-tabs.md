@@ -10,7 +10,7 @@ Month tabs accumulate rows over time and the owner occasionally edits the spread
 ## Decision
 
 - On each `sync`, after appends, every **closed month tab** is protected as a **whole sheet** (`range: {"sheetId": N}`, no row/column bounds) with **warning-only** mode (`warningOnly: true`, description `Mes cerrado: aviso antes de editar`). This is the API equivalent of the Google Sheets "Permisos de edición de intervalos" dialog with "Mostrar una advertencia al editar este intervalo": every editor (including the service account) can still write; the UI asks for confirmation. No editor list is sent (`editors` is ignored by the API when `warningOnly` is true).
-- **Month completed** = the tab title parses as a Spanish month name + four-digit year (`GoogleSheetsClient.parseTabTitle`) and its `YearMonth` is strictly before the run month. The current and future months are never protected; non-month tabs (`_sync`, the legacy flat tab) never match the parser and are never protected.
+- **Month completed** = the tab title parses as a Spanish month name + four-digit year (`GoogleSheetsClient.parseTabTitle`) and its `YearMonth` is strictly before the run month. The current and future months are never protected; non-month tabs (`_sync`, the legacy flat tab) never match the parser and are never protected. This does not alter ADR-0007's title contract: the pass only reads titles, nothing is renamed or rewritten.
 - **Idempotency:** a sheet that already has any `protectedRanges` entry is skipped, so repeated syncs never add duplicate protections and owner-managed protections take precedence.
 - **Late transactions are allowed:** appends are written before the protection pass in the same sync, and warning-only protection never blocks API writes by an editor. This does not alter ADR-0008's append-only cell rule — the protection pass writes sheet metadata (`addProtectedRange`), not cell values.
 - **Failure policy:** a protection HTTP failure propagates through `requireOk` and fails the sync (exit 1), consistent with metadata/read/append failures. Accepted trade-off: the next scheduled retry spends another bank access.
@@ -39,5 +39,6 @@ Month tabs accumulate rows over time and the owner occasionally edits the spread
 
 - Plan: `docs/ai/plans/2026-11-17_211424-protect-closed-month-tabs.md`
 - Invariants: `docs/ai/architecture.md` (protection-pass bullet)
+- Related: `docs/ai/decisions/ADR-0007-spanish-month-tab-persistence-key.md` (month tab title contract, unchanged; titles are parsed only)
 - Related: `docs/ai/decisions/ADR-0008-four-column-layout-hidden-dedupe-ledger.md` (append-only writer, unaffected)
 - User docs: `README.md` "Google Sheets layout"
