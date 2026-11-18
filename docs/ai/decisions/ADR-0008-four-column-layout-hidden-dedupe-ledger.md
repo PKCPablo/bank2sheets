@@ -1,6 +1,6 @@
 # ADR-0008: Four-column month tabs with DD/MM/YYYY dates and a hidden `_sync` dedupe ledger
 
-- Status: accepted
+- Status: accepted (superseded in part by the Amendment (2026-11-18) at the end of this document)
 - Date: 2026-11-16
 
 ## Context
@@ -44,3 +44,14 @@ Month tabs previously carried six columns (`Fecha`, `Descripción`, `Importe`, `
 - Supersedes (partially): `docs/ai/decisions/ADR-0007-spanish-month-tab-persistence-key.md`
 - Invariants: `docs/ai/architecture.md` (month-tab layout, `_sync` ledger, legacy-header rejection)
 - User docs: `README.md` "Google Sheets layout"
+
+## Amendment (2026-11-18) — date-typed `Fecha` cells supersede the text-date decision
+
+Implemented by `plans/2026-11-18_182437-date-typed-fecha-cells.md` (GitHub issue #18). This amendment supersedes exactly two parts of the original text above, which is kept unchanged as history:
+
+- Decision bullet 2, first sentence only: "`Fecha` is written as `DD/MM/YYYY` text (`valueInputOption=RAW` keeps it literal, not a date-typed cell)." The same bullet's second sentence still stands: batch ordering sorts on the underlying `LocalDate`, never on the formatted string.
+- Consequences bullet "No date-typed cells": `Fecha` is no longer literal `DD/MM/YYYY` text.
+
+The new append contract: the visible month-row append uses `valueInputOption=USER_ENTERED` with `Fecha` sent as an ISO `yyyy-MM-dd` string, which Sheets parses into a date-typed cell whose display follows the spreadsheet locale (no number format or locale is set in code); `Descripción`/`Cuenta` are prefixed with one leading apostrophe (literal-text escape, not displayed); `Importe` remains a JSON number. The header row and both `_sync` appends (header and data) keep `valueInputOption=RAW`. `SheetRow` owns the cell representation; `GoogleSheetsClient` selects the option per append.
+
+Unchanged and still in force: the append-only writer, the four-column layout, the hidden `_sync` ledger and its append order, the legacy six-column header rejection, and the six-column/`RAW`-era reset guidance. Existing rows written as `DD/MM/YYYY` text by older versions are **not** migrated or rewritten; mixed tabs (text-date rows above typed-date rows) are accepted, and a manual reset remains optional for the owner. The original Validation section's `DD/MM/YYYY` smoke expectation is superseded by the typed-cell human validation in the plan (typed `Fecha` cell, `=ISNUMBER` true, literal `=`-prefixed descriptions, mixed tab not rejected, second run appends 0). The title's `DD/MM/YYYY dates` wording is historical and intentionally unchanged.
