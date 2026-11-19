@@ -51,7 +51,7 @@ import java.util.Set;
  * text stays literal; amounts sent as JSON numbers become numeric cells (non-string
  * JSON values are not parsed even under {@code USER_ENTERED}). Each append
  * batch is sorted by {@code Fecha} ascending (stable, so same-date rows keep
- * provider order). The header row is written once per tab when missing, with
+ * the caller's input order — the caller supplies reverse provider order). The header row is written once per tab when missing, with
  * {@code valueInputOption=RAW}; a tab whose existing header does not match the
  * four expected cells (e.g. a legacy six-column tab) fails fast with a reset
  * instruction instead of being migrated. Existing rows written by older

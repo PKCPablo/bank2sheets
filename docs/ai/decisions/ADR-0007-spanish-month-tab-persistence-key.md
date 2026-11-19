@@ -17,6 +17,12 @@ The plan `docs/ai/plans/2026-11-16_010003-spanish-month-tabs-ascending-dates.md`
 - One spreadsheet per calendar year is a manual operational switch: the owner updates `GOOGLE_SPREADSHEET_ID` in `.env` and the Actions secret before the first sync that returns new-year transactions (with the monthly cron, before the February 1 run). There is no automatic multi-spreadsheet routing or new environment variable.
 - Each append sorts only the incoming batch by `Fecha` ascending (stable; same-day rows keep provider order). Existing rows are never rewritten, so a late-arriving transaction with an older date lands at the end of the tab (accepted).
 
+## Amendment (2026-11-19): same-day ordering
+
+Enable Banking's API reference documents no ordering guarantee for `GET /accounts/{account_id}/transactions`; the owner observed the list is newest-first (Gate H1, 2026-11-19: `fetch` printed 171 transactions with `madeOn` descending). To make same-date rows read chronologically (oldest movement first), `Main.sync` now reverses each account's fetched list (`List.reversed()`) before month grouping; `GoogleSheetsClient.appendRows` keeps its stable `Fecha`-ascending sort, so same-date rows keep the caller's (reversed) input order. Batch-ascending and append-only behavior are unchanged, and `fetch` still prints the raw provider order.
+
+This amendment supersedes Decision bullet 5's parenthetical "(stable; same-day rows keep provider order)" — same-day rows now keep the caller's input order, which is reverse provider order. Consequences bullet 4 ("Ordering is batch-ascending only") is now incomplete: intra-day order is also defined, but only per batch. Risk: the provider direction is observed, not contractual — if Enable Banking changes ordering direction, same-day order flips and the reversal in `Main.sync` must be revisited. The chronological guarantee remains per-batch only: a late-arriving same-day row still lands at the end of the tab, after existing same-day rows. Original text below is kept as history (ADR-0008 amendment precedent).
+
 ## Alternatives considered
 
 - **Keep `YYYY-MM` titles:** rejected by the owner's requested naming.
