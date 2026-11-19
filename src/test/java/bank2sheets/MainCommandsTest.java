@@ -412,6 +412,138 @@ class MainCommandsTest {
     }
 
     @Test
+    void enableBankingSyncReversesSameDayProviderOrder() throws IOException {
+        FakeHttp http = new FakeHttp(EB_BASE);
+        stubSession(http, "[\"uuid-1\"]");
+        stubAccountDetails(http, "uuid-1", "Cuenta Nominas");
+        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", """
+                {"transactions": [
+                  {"entry_reference": "ref-1", "credit_debit_indicator": "DRDT",
+                   "transaction_amount": {"amount": "10.00", "currency": "EUR"},
+                   "remittance_information": ["Café"],
+                   "booking_date": "2026-08-15"},
+                  {"entry_reference": "ref-2", "credit_debit_indicator": "DRDT",
+                   "transaction_amount": {"amount": "20.00", "currency": "EUR"},
+                   "remittance_information": ["GYM"],
+                   "booking_date": "2026-08-15"},
+                  {"entry_reference": "ref-3", "credit_debit_indicator": "CRDT",
+                   "transaction_amount": {"amount": "1200.50", "currency": "EUR"},
+                   "remittance_information": ["Nómina"],
+                   "booking_date": "2026-08-02"}
+                ]}
+                """);
+        FakeHttp sheets = SheetsTestSupport.fakeHttp();
+        stubSpreadsheetTitles(sheets, "Agosto 2026");
+        stubMonthSheet(sheets, "Agosto 2026");
+        Path stateFile = sessionState();
+        AppConfig cfg = enableBankingConfig("sess-eb-1");
+        Main main = mainFor(cfg, http, sheets, stateFile);
+
+        Result result = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
+
+        assertEquals(0, result.exitCode());
+        List<FakeHttp.Request> appends = sheets.requests.stream()
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=USER_ENTERED"))
+                .toList();
+        assertEquals(1, appends.size());
+        JsonArray rows = JsonParser.parseString(appends.get(0).body()).getAsJsonObject()
+                .getAsJsonArray("values");
+        assertEquals(3, rows.size());
+        assertEquals("2026-08-02", rows.get(0).getAsJsonArray().get(0).getAsString());
+        assertEquals("2026-08-15", rows.get(1).getAsJsonArray().get(0).getAsString());
+        assertEquals("2026-08-15", rows.get(2).getAsJsonArray().get(0).getAsString());
+        assertEquals("'Nómina", rows.get(0).getAsJsonArray().get(2).getAsString());
+        assertEquals("'GYM", rows.get(1).getAsJsonArray().get(2).getAsString());
+        assertEquals("'Café", rows.get(2).getAsJsonArray().get(2).getAsString());
+    }
+
+    @Test
+    void enableBankingSyncReversesOrderPerAccount() throws IOException {
+        FakeHttp http = new FakeHttp(EB_BASE);
+        stubSession(http, "[\"uuid-1\", \"uuid-2\"]");
+        stubAccountDetails(http, "uuid-1", "Cuenta Nominas");
+        stubAccountDetails(http, "uuid-2", "Cuenta Ahorro");
+        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", """
+                {"transactions": [
+                  {"entry_reference": "ref-1b", "credit_debit_indicator": "DRDT",
+                   "transaction_amount": {"amount": "10.00", "currency": "EUR"},
+                   "remittance_information": ["u1-new"],
+                   "booking_date": "2026-08-15"},
+                  {"entry_reference": "ref-1a", "credit_debit_indicator": "DRDT",
+                   "transaction_amount": {"amount": "20.00", "currency": "EUR"},
+                   "remittance_information": ["u1-old"],
+                   "booking_date": "2026-08-15"}
+                ]}
+                """);
+        http.stub("/accounts/uuid-2/transactions?transaction_status=BOOK", """
+                {"transactions": [
+                  {"entry_reference": "ref-2b", "credit_debit_indicator": "DRDT",
+                   "transaction_amount": {"amount": "30.00", "currency": "EUR"},
+                   "remittance_information": ["u2-new"],
+                   "booking_date": "2026-08-16"},
+                  {"entry_reference": "ref-2a", "credit_debit_indicator": "DRDT",
+                   "transaction_amount": {"amount": "40.00", "currency": "EUR"},
+                   "remittance_information": ["u2-old"],
+                   "booking_date": "2026-08-16"}
+                ]}
+                """);
+        FakeHttp sheets = SheetsTestSupport.fakeHttp();
+        stubSpreadsheetTitles(sheets, "Agosto 2026");
+        stubMonthSheet(sheets, "Agosto 2026");
+        Path stateFile = sessionState();
+        AppConfig cfg = new AppConfig("app-1", TestKeys.base64Pem(),
+                "http://127.0.0.1:8765/bank2sheets/callback", "sess-eb-1",
+                List.of(new AccountConfig("enablebanking", "uuid-1"),
+                        new AccountConfig("enablebanking", "uuid-2")));
+        Main main = mainFor(cfg, http, sheets, stateFile);
+
+        Result first = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
+        assertEquals(0, first.exitCode());
+        assertTrue(first.stdout().contains("appended 4 new row(s)"));
+        List<FakeHttp.Request> appends = sheets.requests.stream()
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=USER_ENTERED"))
+                .toList();
+        assertEquals(1, appends.size());
+        JsonArray rows = JsonParser.parseString(appends.get(0).body()).getAsJsonObject()
+                .getAsJsonArray("values");
+        assertEquals(4, rows.size());
+        assertEquals("2026-08-15", rows.get(0).getAsJsonArray().get(0).getAsString());
+        assertEquals("2026-08-15", rows.get(1).getAsJsonArray().get(0).getAsString());
+        assertEquals("2026-08-16", rows.get(2).getAsJsonArray().get(0).getAsString());
+        assertEquals("2026-08-16", rows.get(3).getAsJsonArray().get(0).getAsString());
+        assertEquals("'u1-old", rows.get(0).getAsJsonArray().get(2).getAsString());
+        assertEquals("'u1-new", rows.get(1).getAsJsonArray().get(2).getAsString());
+        assertEquals("'u2-old", rows.get(2).getAsJsonArray().get(2).getAsString());
+        assertEquals("'u2-new", rows.get(3).getAsJsonArray().get(2).getAsString());
+        assertEquals("'Cuenta Nominas", rows.get(0).getAsJsonArray().get(3).getAsString());
+        assertEquals("'Cuenta Nominas", rows.get(1).getAsJsonArray().get(3).getAsString());
+        assertEquals("'Cuenta Ahorro", rows.get(2).getAsJsonArray().get(3).getAsString());
+        assertEquals("'Cuenta Ahorro", rows.get(3).getAsJsonArray().get(3).getAsString());
+
+        // Ledger round trip: mark all four ids as present, then sync again appends nothing.
+        String ledgerBody = sheets.requests.stream()
+                .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'_sync'!A2:B:append?valueInputOption=RAW"))
+                .findFirst().orElseThrow().body();
+        JsonArray ledgerValues = JsonParser.parseString(ledgerBody).getAsJsonObject().getAsJsonArray("values");
+        assertEquals(4, ledgerValues.size());
+        StringBuilder ledgerStub = new StringBuilder("{\"values\": [");
+        for (int i = 0; i < ledgerValues.size(); i++) {
+            if (i > 0) {
+                ledgerStub.append(", ");
+            }
+            ledgerStub.append("[\"Agosto 2026\",\"")
+                    .append(ledgerValues.get(i).getAsJsonArray().get(1).getAsString())
+                    .append("\"]");
+        }
+        ledgerStub.append("]}");
+        sheets.stub("/sheet-1/values/'_sync'!A:B", ledgerStub.toString());
+
+        Result second = CliTestSupport.capture(() -> main.dispatch(new String[] {"sync"}));
+        assertEquals(0, second.exitCode());
+        assertTrue(second.stdout().contains("appended 0 new row(s), skipped 4 duplicate(s)"));
+    }
+
+    @Test
     void enableBankingSyncSkipsAppendForAllDuplicateMonth() throws IOException {
         FakeHttp http = new FakeHttp(EB_BASE);
         stubSession(http, "[\"uuid-1\"]");

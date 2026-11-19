@@ -302,7 +302,8 @@ class GoogleSheetsClientTest {
 
         client.appendRows(YearMonth.of(2026, 8), List.of(
                 new SheetRow(LocalDate.of(2026, 8, 15), new BigDecimal("10"), "Tarde", "Cuenta Principal", "t-late"),
-                new SheetRow(LocalDate.of(2026, 8, 2), new BigDecimal("20"), "Temprano", "Cuenta Principal", "t-early")));
+                new SheetRow(LocalDate.of(2026, 8, 2), new BigDecimal("20"), "Temprano", "Cuenta Principal", "t-early"),
+                new SheetRow(LocalDate.of(2026, 8, 15), new BigDecimal("30"), "Tarde-2", "Cuenta Principal", "t-late-2")));
 
         FakeHttp.Request dataAppend = http.requests.stream()
                 .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=USER_ENTERED"))
@@ -310,6 +311,10 @@ class GoogleSheetsClientTest {
         JsonArray values = JsonParser.parseString(dataAppend.body()).getAsJsonObject().getAsJsonArray("values");
         assertEquals("2026-08-02", values.get(0).getAsJsonArray().get(0).getAsString());
         assertEquals("2026-08-15", values.get(1).getAsJsonArray().get(0).getAsString());
+        assertEquals("2026-08-15", values.get(2).getAsJsonArray().get(0).getAsString());
+        // Stable sort: same-date rows keep their input order.
+        assertEquals("'Tarde", values.get(1).getAsJsonArray().get(2).getAsString());
+        assertEquals("'Tarde-2", values.get(2).getAsJsonArray().get(2).getAsString());
     }
 
     @Test

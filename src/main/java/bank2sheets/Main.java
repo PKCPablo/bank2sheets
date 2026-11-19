@@ -232,7 +232,10 @@ public final class Main {
      * month's new rows are appended in ascending {@code Fecha} order. Dedupe is
      * exact on the transaction id against the hidden {@code _sync} ledger (per
      * month tab), plus an in-run id set, so repeated runs append nothing new
-     * (idempotency). After appending, a warning-only protection pass marks
+     * (idempotency). Same-date rows are written in reverse provider order
+     * (chronological, under the newest-first provider contract); {@code fetch}
+     * is unchanged and keeps printing the raw provider order. After appending,
+     * a warning-only protection pass marks
      * every closed month tab (see {@link GoogleSheetsClient#protectCompletedMonths}).
      * Exits 0 on success and 1 on missing configuration or
      * provider/Sheets errors.
@@ -251,7 +254,9 @@ public final class Main {
             int fetched = 0;
             for (AccountConfig account : resolved.accounts()) {
                 String label = accountLabel(account, labels);
-                for (Transaction transaction : source.fetchTransactions(account.providerAccountId())) {
+                List<Transaction> accountTransactions = source.fetchTransactions(account.providerAccountId());
+                // The provider lists newest first; reverse so same-date rows read chronologically.
+                for (Transaction transaction : accountTransactions.reversed()) {
                     fetched++;
                     if (!seen.add(transaction.id())) {
                         continue;
