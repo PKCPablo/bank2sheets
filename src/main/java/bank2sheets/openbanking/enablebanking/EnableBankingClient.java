@@ -184,7 +184,8 @@ public final class EnableBankingClient implements TransactionSource {
      * {@code eb:} + entry_reference, else transaction_id, else a sha256 over the
      * canonical fields. {@code entry_reference} and {@code transaction_id} are
      * not guaranteed unique by the API, so reference-based ids carry a 16-hex
-     * hash suffix of the canonical fields: two distinct transactions sharing a
+     * hash suffix of the canonical fields (which hash the raw provider
+     * description): two distinct transactions sharing a
      * reference keep distinct dedupe ids instead of silently collapsing into
      * one sheet row.
      */
@@ -207,15 +208,37 @@ public final class EnableBankingClient implements TransactionSource {
     }
 
     /**
+     * Display concept: when the raw text contains {@code //} segments, the last
+     * non-blank trimmed segment (e.g. {@code TRANSFERENCIAS // TRANSFERENCIA
+     * REALIZADA // GYM} -> {@code GYM}); text without {@code //} verbatim; the
+     * full raw text when every segment is blank.
+     */
+    private static String concept(String text) {
+        if (!text.contains("//")) {
+            return text;
+        }
+        String[] segments = text.split("//");
+        for (int i = segments.length - 1; i >= 0; i--) {
+            String segment = segments[i].trim();
+            if (!segment.isEmpty()) {
+                return segment;
+            }
+        }
+        return text;
+    }
+
+    /**
      * Deterministic id fallback: only the normalized values that also build the
-     * {@link Transaction} (resolved date, signed amount, currency, description,
-     * reference), so a re-fetch with changed volatile fields (status, balances,
-     * exchange rates, transaction_id) still yields the same id.
+     * {@link Transaction} (resolved date, signed amount, currency, raw
+     * description, reference), so a re-fetch with changed volatile fields
+     * (status, balances, exchange rates, transaction_id) still yields the same
+     * id. The hash uses the raw description, so display normalization never
+     * invalidates ids.
      */
     private static String canonicalFields(JsonObject t) {
         return resolvedDate(t) + "|" + signedAmount(t).toPlainString() + "|"
                 + JsonSupport.stringOrEmpty(t.getAsJsonObject("transaction_amount"), "currency")
-                + "|" + description(t) + "|" + JsonSupport.stringOrEmpty(t, "reference_number");
+                + "|" + rawDescription(t) + "|" + JsonSupport.stringOrEmpty(t, "reference_number");
     }
 
     /** Amount with the DBIT sign applied; the same value stored on the {@link Transaction}. */
@@ -236,8 +259,13 @@ public final class EnableBankingClient implements TransactionSource {
                 + "booking_date/value_date/transaction_date: " + t);
     }
 
-    /** Remittance lines joined, else creditor/debtor name by direction, else note, else empty. */
+    /** Display description: the transaction concept. */
     private static String description(JsonObject t) {
+        return concept(rawDescription(t));
+    }
+
+    /** Raw provider description used for dedupe ids: remittance lines joined, else creditor/debtor name by direction, else note. */
+    private static String rawDescription(JsonObject t) {
         JsonElement remittance = t.get("remittance_information");
         if (remittance != null && !remittance.isJsonNull()) {
             StringBuilder joined = new StringBuilder();

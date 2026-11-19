@@ -230,6 +230,74 @@ class EnableBankingClientTest {
     }
 
     @Test
+    void descriptionUsesLastNonBlankSegmentWhileIdHashesRawText() {
+        FakeHttp http = new FakeHttp(BASE);
+        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", """
+                {"transactions": [
+                  {"entry_reference": "ref-1", "credit_debit_indicator": "CRDT",
+                   "transaction_amount": {"amount": "1200.50", "currency": "EUR"},
+                   "remittance_information": ["TRANSFERENCIAS // TRANSFERENCIA REALIZADA //   GYM  "],
+                   "booking_date": "2026-08-01"}
+                ]}
+                """);
+        EnableBankingClient client = client(http, () -> "");
+
+        Transaction transaction = client.fetchTransactions("uuid-1").get(0);
+
+        assertEquals("GYM", transaction.description());
+        assertEquals(refId("ref-1", "2026-08-01|1200.50|EUR|TRANSFERENCIAS // TRANSFERENCIA REALIZADA //   GYM  |"),
+                transaction.id());
+    }
+
+    @Test
+    void descriptionWithoutSeparatorIsReturnedVerbatim() {
+        FakeHttp http = new FakeHttp(BASE);
+        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", """
+                {"transactions": [
+                  {"entry_reference": "ref-1", "credit_debit_indicator": "CRDT",
+                   "transaction_amount": {"amount": "1200.50", "currency": "EUR"},
+                   "remittance_information": ["  Nomina agosto  "],
+                   "booking_date": "2026-08-01"}
+                ]}
+                """);
+        EnableBankingClient client = client(http, () -> "");
+
+        assertEquals("  Nomina agosto  ", client.fetchTransactions("uuid-1").get(0).description());
+    }
+
+    @Test
+    void descriptionSkipsTrailingBlankSegments() {
+        FakeHttp http = new FakeHttp(BASE);
+        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", """
+                {"transactions": [
+                  {"entry_reference": "ref-1", "credit_debit_indicator": "CRDT",
+                   "transaction_amount": {"amount": "1200.50", "currency": "EUR"},
+                   "remittance_information": ["A // B //   "],
+                   "booking_date": "2026-08-01"}
+                ]}
+                """);
+        EnableBankingClient client = client(http, () -> "");
+
+        assertEquals("B", client.fetchTransactions("uuid-1").get(0).description());
+    }
+
+    @Test
+    void descriptionFallsBackToRawTextWhenAllSegmentsAreBlank() {
+        FakeHttp http = new FakeHttp(BASE);
+        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", """
+                {"transactions": [
+                  {"entry_reference": "ref-1", "credit_debit_indicator": "CRDT",
+                   "transaction_amount": {"amount": "1200.50", "currency": "EUR"},
+                   "remittance_information": ["  //   "],
+                   "booking_date": "2026-08-01"}
+                ]}
+                """);
+        EnableBankingClient client = client(http, () -> "");
+
+        assertEquals("  //   ", client.fetchTransactions("uuid-1").get(0).description());
+    }
+
+    @Test
     void fetchTransactionsHashesIdWhenNoReferenceOrTransactionId() {
         FakeHttp http = new FakeHttp(BASE);
         http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", """

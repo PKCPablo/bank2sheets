@@ -123,7 +123,7 @@ class MainCommandsTest {
                 {"transactions": [
                   {"entry_reference": "ref-1", "credit_debit_indicator": "CRDT",
                    "transaction_amount": {"amount": "1200.50", "currency": "EUR"},
-                   "remittance_information": ["Nomina", "agosto"],
+                   "remittance_information": ["TRANSFERENCIAS // TRANSFERENCIA REALIZADA // GYM"],
                    "booking_date": "2026-08-01"}
                 ]}
                 """);
@@ -135,7 +135,7 @@ class MainCommandsTest {
         assertTrue(result.stdout().contains("Account uuid-1 (Cuenta Nominas): 1 transaction(s)"));
         assertTrue(result.stdout().contains("\"id\":\"eb:ref-1:"));
         assertTrue(result.stdout().contains(
-                "\"description\":\"Nomina agosto\",\"amount\":1200.50,\"currency\":\"EUR\","
+                "\"description\":\"GYM\",\"amount\":1200.50,\"currency\":\"EUR\","
                         + "\"madeOn\":\"2026-08-01\"}"));
     }
 
@@ -144,7 +144,14 @@ class MainCommandsTest {
         FakeHttp http = new FakeHttp(EB_BASE);
         stubSession(http, "[\"uuid-1\"]");
         stubAccountDetails(http, "uuid-1", "Cuenta Nominas");
-        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", NOMINA_TRANSACTION_JSON);
+        http.stub("/accounts/uuid-1/transactions?transaction_status=BOOK", """
+                {"transactions": [
+                  {"entry_reference": "ref-1", "credit_debit_indicator": "CRDT",
+                   "transaction_amount": {"amount": "1200.50", "currency": "EUR"},
+                   "remittance_information": ["TRANSFERENCIAS // TRANSFERENCIA REALIZADA // GYM"],
+                   "booking_date": "2026-08-01"}
+                ]}
+                """);
         FakeHttp sheets = SheetsTestSupport.fakeHttp();
         stubSpreadsheetTitles(sheets, "Agosto 2026");
         stubMonthSheet(sheets, "Agosto 2026");
@@ -158,6 +165,8 @@ class MainCommandsTest {
         String appendBody = sheets.requests.stream()
                 .filter(r -> "POST".equals(r.method()) && r.url().endsWith("'Agosto%202026'!A1:D:append?valueInputOption=USER_ENTERED"))
                 .findFirst().orElseThrow().body();
+        assertEquals("'GYM", JsonParser.parseString(appendBody).getAsJsonObject()
+                .getAsJsonArray("values").get(0).getAsJsonArray().get(2).getAsString());
         assertEquals("'Cuenta Nominas", JsonParser.parseString(appendBody).getAsJsonObject()
                 .getAsJsonArray("values").get(0).getAsJsonArray().get(3).getAsString());
         assertEquals("2026-08-01", JsonParser.parseString(appendBody).getAsJsonObject()
