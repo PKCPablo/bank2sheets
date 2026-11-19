@@ -52,17 +52,25 @@ public final class SheetsTestSupport {
     public static final String HEADER_JSON =
             "{\"values\":[[\"Fecha\",\"Movimientos\",\"Descripci\u00f3n\",\"Cuenta\"]]}";
 
-    /** Stubs the spreadsheet metadata response with the given tab titles. */
+    /** Metadata path for the lazy tab-titles read: first sheet id/title plus all tab titles. */
+    public static final String SHEET_METADATA_PATH = "/sheet-1?fields=sheets.properties(sheetId,title)";
+
+    /**
+     * Stubs the spreadsheet metadata response with the given tab titles, in
+     * sheet order; each sheet gets {@code sheetId} equal to its index so tests
+     * can assert {@code sourceSheetId} on duplicate requests.
+     */
     public static void stubSheetTitles(FakeHttp http, String... titles) {
         StringBuilder json = new StringBuilder("{\"sheets\":[");
         for (int i = 0; i < titles.length; i++) {
             if (i > 0) {
                 json.append(',');
             }
-            json.append("{\"properties\":{\"title\":\"").append(titles[i]).append("\"}}");
+            json.append("{\"properties\":{\"sheetId\":").append(i)
+                    .append(",\"title\":\"").append(titles[i]).append("\"}}");
         }
         json.append("]}");
-        http.stub("/sheet-1?fields=sheets.properties.title", json.toString());
+        http.stub(SHEET_METADATA_PATH, json.toString());
     }
 
     /** Metadata path for the protection pass: sheet ids, titles, and existing protected ranges. */

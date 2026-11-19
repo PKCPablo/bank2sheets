@@ -316,18 +316,30 @@ class MainCommandsTest {
         assertEquals(0, first.exitCode());
         assertTrue(first.stdout().contains("appended 2 new row(s)"));
 
-        // Three distinct addSheet bodies: two months plus the hidden _sync ledger.
-        List<String> addSheetBodies = sheets.requests.stream()
+        // One addSheet (the hidden _sync ledger) plus two duplicateSheet bodies for the months.
+        List<String> batchUpdates = sheets.requests.stream()
                 .filter(r -> "POST".equals(r.method()) && r.url().endsWith("/sheet-1:batchUpdate"))
                 .map(r -> r.body()).toList();
-        assertEquals(3, addSheetBodies.size());
-        Set<String> createdTitles = new java.util.HashSet<>();
-        for (String body : addSheetBodies) {
-            createdTitles.add(JsonParser.parseString(body).getAsJsonObject()
-                    .getAsJsonArray("requests").get(0).getAsJsonObject()
-                    .getAsJsonObject("addSheet").getAsJsonObject("properties").get("title").getAsString());
+        assertEquals(3, batchUpdates.size());
+        Set<String> duplicateTitles = new java.util.HashSet<>();
+        Set<Integer> duplicateSourceIds = new java.util.HashSet<>();
+        int addSheetCount = 0;
+        for (String body : batchUpdates) {
+            JsonObject request = JsonParser.parseString(body).getAsJsonObject()
+                    .getAsJsonArray("requests").get(0).getAsJsonObject();
+            if (request.has("addSheet")) {
+                addSheetCount++;
+                assertEquals("_sync", request.getAsJsonObject("addSheet")
+                        .getAsJsonObject("properties").get("title").getAsString());
+            } else {
+                JsonObject duplicate = request.getAsJsonObject("duplicateSheet");
+                duplicateTitles.add(duplicate.get("newSheetName").getAsString());
+                duplicateSourceIds.add(duplicate.get("sourceSheetId").getAsInt());
+            }
         }
-        assertEquals(Set.of("Julio 2026", "Agosto 2026", "_sync"), createdTitles);
+        assertEquals(1, addSheetCount);
+        assertEquals(Set.of("Julio 2026", "Agosto 2026"), duplicateTitles);
+        assertEquals(Set.of(0), duplicateSourceIds);
 
         // Two quoted appends; each contains exactly the row whose Fecha matches its tab.
         List<FakeHttp.Request> appends = sheets.requests.stream()

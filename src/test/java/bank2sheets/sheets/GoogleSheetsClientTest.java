@@ -47,15 +47,14 @@ class GoogleSheetsClientTest {
         assertEquals(Set.of("t1", "t2"), client.existingTransactionIds(YearMonth.of(2026, 8)));
 
         assertEquals(1, http.requests.stream()
-                .filter(r -> r.url().endsWith("/sheet-1?fields=sheets.properties.title")).count());
+                .filter(r -> r.url().endsWith(SheetsTestSupport.SHEET_METADATA_PATH)).count());
         assertTrue(http.requests.stream().noneMatch(r -> r.url().contains(":batchUpdate")));
     }
 
     @Test
     void existingTransactionIdsForMissingMonthCreatesSheetThenReads() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1?fields=sheets.properties.title",
-                "{\"sheets\":[{\"properties\":{\"title\":\"Hoja 1\"}}]}");
+        SheetsTestSupport.stubSheetTitles(http, "Hoja 1");
         http.stub("/sheet-1:batchUpdate", "{\"spreadsheetId\":\"sheet-1\"}");
         http.stub("/sheet-1/values/'_sync'!A1:B:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
         http.stub("/sheet-1/values/'_sync'!A:B", "{}");
@@ -63,15 +62,17 @@ class GoogleSheetsClientTest {
 
         assertTrue(client.existingTransactionIds(YearMonth.of(2026, 11)).isEmpty());
 
-        // requests: 0=token, 1=metadata, 2=month addSheet, 3=_sync addSheet, 4=_sync header append, 5=ledger read
+        // requests: 0=token, 1=metadata, 2=month duplicateSheet, 3=_sync addSheet, 4=_sync header append, 5=ledger read
         assertEquals(6, http.requests.size());
-        FakeHttp.Request addSheet = http.requests.get(2);
-        assertEquals("POST", addSheet.method());
-        assertEquals("https://sheets.googleapis.com/v4/spreadsheets/sheet-1:batchUpdate", addSheet.url());
-        JsonObject body = JsonParser.parseString(addSheet.body()).getAsJsonObject();
-        assertEquals("Noviembre 2026",
-                body.getAsJsonArray("requests").get(0).getAsJsonObject()
-                        .getAsJsonObject("addSheet").getAsJsonObject("properties").get("title").getAsString());
+        FakeHttp.Request duplicate = http.requests.get(2);
+        assertEquals("POST", duplicate.method());
+        assertEquals("https://sheets.googleapis.com/v4/spreadsheets/sheet-1:batchUpdate", duplicate.url());
+        JsonObject body = JsonParser.parseString(duplicate.body()).getAsJsonObject();
+        JsonObject duplicateRequest = body.getAsJsonArray("requests").get(0).getAsJsonObject()
+                .getAsJsonObject("duplicateSheet");
+        assertEquals(0, duplicateRequest.get("sourceSheetId").getAsInt());
+        assertEquals("Noviembre 2026", duplicateRequest.get("newSheetName").getAsString());
+        assertEquals(1, duplicateRequest.get("insertSheetIndex").getAsInt());
         assertEquals(1, body.getAsJsonArray("requests").size());
         FakeHttp.Request helperAddSheet = http.requests.get(3);
         JsonObject helperBody = JsonParser.parseString(helperAddSheet.body()).getAsJsonObject();
@@ -89,14 +90,78 @@ class GoogleSheetsClientTest {
         // Second month: metadata stays at one read, _sync is not re-created, only the month tab is.
         assertTrue(client.existingTransactionIds(YearMonth.of(2026, 12)).isEmpty());
         assertEquals(1, http.requests.stream()
-                .filter(r -> r.url().endsWith("/sheet-1?fields=sheets.properties.title")).count());
-        FakeHttp.Request secondAddSheet = http.requests.get(6);
-        assertEquals("POST", secondAddSheet.method());
-        JsonObject secondBody = JsonParser.parseString(secondAddSheet.body()).getAsJsonObject();
-        assertEquals("Diciembre 2026",
-                secondBody.getAsJsonArray("requests").get(0).getAsJsonObject()
-                        .getAsJsonObject("addSheet").getAsJsonObject("properties").get("title").getAsString());
+                .filter(r -> r.url().endsWith(SheetsTestSupport.SHEET_METADATA_PATH)).count());
+        FakeHttp.Request secondDuplicate = http.requests.get(6);
+        assertEquals("POST", secondDuplicate.method());
+        JsonObject secondBody = JsonParser.parseString(secondDuplicate.body()).getAsJsonObject();
+        JsonObject secondRequest = secondBody.getAsJsonArray("requests").get(0).getAsJsonObject()
+                .getAsJsonObject("duplicateSheet");
+        assertEquals(0, secondRequest.get("sourceSheetId").getAsInt());
+        assertEquals("Diciembre 2026", secondRequest.get("newSheetName").getAsString());
+        assertEquals(3, secondRequest.get("insertSheetIndex").getAsInt());
         assertEquals(3, http.requests.stream().filter(r -> r.url().contains(":batchUpdate")).count());
+    }
+
+    @Test
+    void createsMonthTabByDuplicatingFirstSheet() {
+        FakeHttp http = SheetsTestSupport.fakeHttp();
+        SheetsTestSupport.stubSheetTitles(http, "Plantilla", "_sync");
+        http.stub("/sheet-1:batchUpdate", "{\"spreadsheetId\":\"sheet-1\"}");
+        http.stub("/sheet-1/values/'_sync'!A:B", "{}");
+        GoogleSheetsClient client = client(http);
+
+        assertTrue(client.existingTransactionIds(YearMonth.of(2026, 11)).isEmpty());
+
+        FakeHttp.Request duplicate = http.requests.stream()
+                .filter(r -> r.url().contains(":batchUpdate")).findFirst().orElseThrow();
+        JsonObject duplicateRequest = JsonParser.parseString(duplicate.body()).getAsJsonObject()
+                .getAsJsonArray("requests").get(0).getAsJsonObject().getAsJsonObject("duplicateSheet");
+        assertEquals(0, duplicateRequest.get("sourceSheetId").getAsInt());
+        assertEquals("Noviembre 2026", duplicateRequest.get("newSheetName").getAsString());
+        assertEquals(2, duplicateRequest.get("insertSheetIndex").getAsInt());
+        // No addSheet body carries the month title.
+        assertTrue(http.requests.stream().filter(r -> r.url().contains(":batchUpdate"))
+                .noneMatch(r -> r.body().contains("addSheet")
+                        && r.body().contains("Noviembre 2026")));
+    }
+
+    @Test
+    void fallsBackToBareTabWhenFirstSheetIsAMonthTab() {
+        FakeHttp http = SheetsTestSupport.fakeHttp();
+        SheetsTestSupport.stubSheetTitles(http, "Octubre 2026");
+        http.stub("/sheet-1:batchUpdate", "{\"spreadsheetId\":\"sheet-1\"}");
+        http.stub("/sheet-1/values/'_sync'!A1:B:append?valueInputOption=RAW", "{\"spreadsheetId\":\"sheet-1\"}");
+        http.stub("/sheet-1/values/'_sync'!A:B", "{}");
+        GoogleSheetsClient client = client(http);
+
+        assertTrue(client.existingTransactionIds(YearMonth.of(2026, 11)).isEmpty());
+
+        FakeHttp.Request addSheet = http.requests.stream()
+                .filter(r -> r.url().contains(":batchUpdate")).findFirst().orElseThrow();
+        JsonObject properties = JsonParser.parseString(addSheet.body()).getAsJsonObject()
+                .getAsJsonArray("requests").get(0).getAsJsonObject()
+                .getAsJsonObject("addSheet").getAsJsonObject("properties");
+        assertEquals("Noviembre 2026", properties.get("title").getAsString());
+        assertFalse(properties.has("hidden"));
+    }
+
+    @Test
+    void fallsBackToBareTabWhenFirstSheetIsTheSyncLedger() {
+        FakeHttp http = SheetsTestSupport.fakeHttp();
+        SheetsTestSupport.stubSheetTitles(http, "_sync");
+        http.stub("/sheet-1:batchUpdate", "{\"spreadsheetId\":\"sheet-1\"}");
+        http.stub("/sheet-1/values/'_sync'!A:B", "{}");
+        GoogleSheetsClient client = client(http);
+
+        assertTrue(client.existingTransactionIds(YearMonth.of(2026, 11)).isEmpty());
+
+        FakeHttp.Request addSheet = http.requests.stream()
+                .filter(r -> r.url().contains(":batchUpdate")).findFirst().orElseThrow();
+        JsonObject properties = JsonParser.parseString(addSheet.body()).getAsJsonObject()
+                .getAsJsonArray("requests").get(0).getAsJsonObject()
+                .getAsJsonObject("addSheet").getAsJsonObject("properties");
+        assertEquals("Noviembre 2026", properties.get("title").getAsString());
+        assertFalse(properties.has("hidden"));
     }
 
     @Test
@@ -335,7 +400,7 @@ class GoogleSheetsClientTest {
     @Test
     void nonSuccessMetadataThrows() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1?fields=sheets.properties.title", 403, "{\"error\":{\"message\":\"permission denied\"}}");
+        http.stub(SheetsTestSupport.SHEET_METADATA_PATH, 403, "{\"error\":{\"message\":\"permission denied\"}}");
         GoogleSheetsClient client = client(http);
 
         Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
@@ -347,8 +412,7 @@ class GoogleSheetsClientTest {
     @Test
     void nonSuccessCreateSheetThrows() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1?fields=sheets.properties.title",
-                "{\"sheets\":[{\"properties\":{\"title\":\"Hoja 1\"}}]}");
+        SheetsTestSupport.stubSheetTitles(http, "Agosto 2026");
         http.stub("/sheet-1:batchUpdate", 500, "{\"error\":{\"message\":\"boom\"}}");
         GoogleSheetsClient client = client(http);
 
@@ -359,11 +423,22 @@ class GoogleSheetsClientTest {
     }
 
     @Test
+    void nonSuccessDuplicateSheetThrows() {
+        FakeHttp http = SheetsTestSupport.fakeHttp();
+        SheetsTestSupport.stubSheetTitles(http, "Hoja 1");
+        http.stub("/sheet-1:batchUpdate", 500, "{\"error\":{\"message\":\"boom\"}}");
+        GoogleSheetsClient client = client(http);
+
+        Bank2SheetsException error = assertThrows(Bank2SheetsException.class,
+                () -> client.existingTransactionIds(YearMonth.of(2026, 11)));
+        assertTrue(error.getMessage().contains("duplicate sheet failed"));
+        assertTrue(error.getMessage().contains("500"));
+    }
+
+    @Test
     void nonSuccessReadThrows() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1?fields=sheets.properties.title",
-                "{\"sheets\":[{\"properties\":{\"title\":\"Agosto 2026\"}},"
-                        + "{\"properties\":{\"title\":\"_sync\"}}]}");
+        SheetsTestSupport.stubSheetTitles(http, "Agosto 2026", "_sync");
         http.stub("/sheet-1/values/'_sync'!A:B", 403, "{\"error\":{\"message\":\"permission denied\"}}");
         GoogleSheetsClient client = client(http);
 
@@ -375,9 +450,7 @@ class GoogleSheetsClientTest {
     @Test
     void nonSuccessAppendThrows() {
         FakeHttp http = SheetsTestSupport.fakeHttp();
-        http.stub("/sheet-1?fields=sheets.properties.title",
-                "{\"sheets\":[{\"properties\":{\"title\":\"Agosto 2026\"}},"
-                        + "{\"properties\":{\"title\":\"_sync\"}}]}");
+        SheetsTestSupport.stubSheetTitles(http, "Agosto 2026", "_sync");
         http.stub("/sheet-1/values/'Agosto%202026'!A1:D1", SheetsTestSupport.HEADER_JSON);
         http.stub("/sheet-1/values/'Agosto%202026'!A1:D:append?valueInputOption=USER_ENTERED", 500, "{\"error\":{\"message\":\"boom\"}}");
         http.stub("/sheet-1/values/'_sync'!A:B", "{}");

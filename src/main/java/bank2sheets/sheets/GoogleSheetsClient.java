@@ -36,7 +36,14 @@ import java.util.Set;
  *
  * <p>Target layout: one tab per month titled with the Spanish month name and
  * year (e.g. {@code Noviembre 2026}), columns A..D:
- * {@code Fecha, Movimientos, Descripción, Cuenta}. The visible row append uses
+ * {@code Fecha, Movimientos, Descripción, Cuenta}. A missing month tab is
+ * created as a full duplicate of the spreadsheet's first sheet (values,
+ * formulas, formats, widths, frozen rows, validations) when that first sheet is
+ * a dedicated template — any tab that is neither a month tab nor the
+ * {@code _sync} ledger — inserted at the end of the spreadsheet so the template
+ * stays first; when the first sheet is itself a month tab or {@code _sync}, the
+ * tab falls back to a bare {@code addSheet} creation and the canonical header
+ * is written when missing. The visible row append uses
  * {@code valueInputOption=USER_ENTERED}: {@code Fecha} is sent as ISO
  * {@code yyyy-MM-dd} and parsed into a date-typed cell (display follows the
  * spreadsheet locale), while {@code Descripción}/{@code Cuenta} are
@@ -79,6 +86,8 @@ public final class GoogleSheetsClient {
     private static final Gson GSON = new Gson();
     /** Fields expression for the protection pass: sheet ids, titles, and existing protected ranges. */
     private static final String PROTECTION_FIELDS = "?fields=sheets(properties(sheetId,title),protectedRanges)";
+    /** Fields expression for the lazy metadata read: first sheet id/title plus all tab titles. */
+    private static final String SHEET_METADATA_FIELDS = "?fields=sheets.properties(sheetId,title)";
     /** Description set on every warning-only protection added to a completed month tab. */
     private static final String PROTECTION_DESCRIPTION = "Mes cerrado: aviso antes de editar";
     /** Spanish month names for tab titles; index 0 = January. Locale-independent by design. */
@@ -91,6 +100,12 @@ public final class GoogleSheetsClient {
     private String accessToken;
     /** Titles of the spreadsheet tabs; null until the first metadata read. */
     private Set<String> sheetTitles;
+    /** Sheet id of the first sheet (the template candidate); -1 until the first metadata read. */
+    private int firstSheetId = -1;
+    /** Title of the first sheet; null until the first metadata read. */
+    private String firstSheetTitle;
+    /** Current number of sheets; used as the explicit end-insertion index for new tabs. */
+    private int sheetCount;
     /** Appended transaction ids per tab title; null until the first ledger read. */
     private Map<String, Set<String>> ledger;
 
@@ -179,8 +194,9 @@ public final class GoogleSheetsClient {
 
     /**
      * Ensures a tab titled {@code title} exists: on first use, loads the
-     * spreadsheet's tab titles once ({@code ?fields=sheets.properties.title});
-     * on a miss, creates the tab with a single {@code addSheet} batchUpdate and
+     * spreadsheet's tab metadata once ({@code ?fields=sheets.properties(sheetId,title)});
+     * on a miss, creates the tab — a full duplicate of the first sheet when that
+     * sheet is a dedicated template, otherwise a bare {@code addSheet} tab — and
      * caches it for the rest of the run.
      */
     private void ensureSheet(String title) {
@@ -190,49 +206,90 @@ public final class GoogleSheetsClient {
         }
     }
 
-    /** Loads the spreadsheet's tab titles once per client instance. */
+    /** Loads the spreadsheet's tab metadata (ids, titles, count) once per client instance. */
     private void ensureSheetTitles() {
         if (sheetTitles != null) {
             return;
         }
         Response response = http.exchange("GET",
-                API_BASE + "/" + config.spreadsheetId() + "?fields=sheets.properties.title",
+                API_BASE + "/" + config.spreadsheetId() + SHEET_METADATA_FIELDS,
                 Map.of("Authorization", "Bearer " + accessToken()), null);
         requireOk(response, "metadata");
         JsonObject spreadsheet = JsonSupport.parseObject(response.body());
         Set<String> loaded = new HashSet<>();
+        int count = 0;
         if (spreadsheet.has("sheets")) {
             for (JsonElement sheet : spreadsheet.getAsJsonArray("sheets")) {
                 JsonObject properties = sheet.getAsJsonObject().getAsJsonObject("properties");
-                if (properties != null && properties.has("title")) {
-                    loaded.add(properties.get("title").getAsString());
+                if (properties == null || !properties.has("title")) {
+                    continue;
                 }
+                if (count == 0) {
+                    firstSheetTitle = properties.get("title").getAsString();
+                    firstSheetId = properties.has("sheetId") ? properties.get("sheetId").getAsInt() : -1;
+                }
+                loaded.add(properties.get("title").getAsString());
+                count++;
             }
         }
         sheetTitles = loaded;
+        sheetCount = count;
     }
 
-    /** Creates a tab via one {@code addSheet} batchUpdate; {@code hidden} adds {@code "hidden": true}. */
+    /** Whether the first sheet is a dedicated template: not a month tab and not the {@code _sync} ledger. */
+    private boolean isTemplateSheet() {
+        return firstSheetId >= 0
+                && parseTabTitle(firstSheetTitle) == null
+                && !HELPER_TITLE.equals(firstSheetTitle);
+    }
+
+    /**
+     * Creates a tab: a bare {@code addSheet} batchUpdate ({@code hidden} adds
+     * {@code "hidden": true}) for the {@code _sync} ledger and whenever the
+     * first sheet is not a dedicated template; otherwise one
+     * {@code duplicateSheet} batchUpdate that copies the first sheet (values,
+     * formulas, formats, widths, frozen rows, validations) into the new tab,
+     * inserted at the end of the spreadsheet so the template stays first.
+     */
     private void createSheet(String title, boolean hidden) {
-        JsonObject properties = new JsonObject();
-        properties.addProperty("title", title);
-        if (hidden) {
-            properties.addProperty("hidden", true);
+        JsonObject body;
+        String action;
+        if (hidden || !isTemplateSheet()) {
+            JsonObject properties = new JsonObject();
+            properties.addProperty("title", title);
+            if (hidden) {
+                properties.addProperty("hidden", true);
+            }
+            JsonObject addSheet = new JsonObject();
+            addSheet.add("properties", properties);
+            body = singleRequest("addSheet", addSheet);
+            action = "add sheet";
+        } else {
+            JsonObject duplicateSheet = new JsonObject();
+            duplicateSheet.addProperty("sourceSheetId", firstSheetId);
+            duplicateSheet.addProperty("insertSheetIndex", sheetCount);
+            duplicateSheet.addProperty("newSheetName", title);
+            body = singleRequest("duplicateSheet", duplicateSheet);
+            action = "duplicate sheet";
         }
-        JsonObject addSheet = new JsonObject();
-        addSheet.add("properties", properties);
-        JsonObject body = new JsonObject();
-        JsonArray requests = new JsonArray();
-        JsonObject wrapper = new JsonObject();
-        wrapper.add("addSheet", addSheet);
-        requests.add(wrapper);
-        body.add("requests", requests);
         Response response = http.exchange("POST",
                 API_BASE + "/" + config.spreadsheetId() + ":batchUpdate",
                 Map.of("Authorization", "Bearer " + accessToken(), "Content-Type", "application/json"),
                 body.toString());
-        requireOk(response, "add sheet");
+        requireOk(response, action);
         sheetTitles.add(title);
+        sheetCount++;
+    }
+
+    /** Builds a one-request batchUpdate body: {@code {"requests":[{"<name>":<payload>}]}}. */
+    private static JsonObject singleRequest(String name, JsonObject payload) {
+        JsonObject wrapper = new JsonObject();
+        wrapper.add(name, payload);
+        JsonArray requests = new JsonArray();
+        requests.add(wrapper);
+        JsonObject body = new JsonObject();
+        body.add("requests", requests);
+        return body;
     }
 
     /**
